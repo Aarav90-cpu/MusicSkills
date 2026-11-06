@@ -90,10 +90,10 @@ export const ScrollingLyricsPage: React.FC = () => {
     } else {
       setSyncedLines([
         {
-          id: 'placeholder-1',
+          id: 'cue-ready',
           seconds: 0,
           timestamp: '00:00.000',
-          text: 'Load a project from the library or import a custom audio track + lyrics to start scrolling.',
+          text: 'Select a track from your library or import an audio track to display synchronized lyrics.',
           section: 'Intro',
         },
       ]);

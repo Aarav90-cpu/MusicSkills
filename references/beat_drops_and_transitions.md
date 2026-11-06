@@ -95,3 +95,4 @@ The suspended dominant chord ($\text{V}^{7}\text{sus4}$) denies resolution until
 | **Bridge** | 40%–55% | Half-time breakdown, cross-stick snare, ambient hat | Low-pass filtered sub, minimal movement | Chord substitution (e.g. minor iv, bVI), intimate |
 | **Climax Drop** | 100%+ | Double-time kick, rapid hi-hat rolls, continuous crash | Maximum aggression, accent pushes | Wall of sound, layered vocal countermelodies |
 | **Outro** | 15%–30% | Gradual element subtraction, final cymbal decay | Long root sustain | Resolving major or minor cadence, natural release |
+

@@ -1,0 +1,28 @@
+{
+  "provider": "google",
+  "model": "gemini-4-argon",
+  "apiKey": "",
+  "creativity": 0.7,
+  "humanization": {
+    "timingJitterTicks": 7,
+    "velocityAccentVariance": 12,
+    "durationDriftPercent": 5
+  },
+  "mp3Bitrate": "192k",
+  "soundfontPath": "/usr/share/soundfonts/FluidR3_GM.sf2",
+  "theme": "dark",
+  "chatsDir": "./.chats",
+  "inputDevice": "default",
+  "defaultGenre": "pop",
+  "defaultBpm": 120,
+  "defaultKey": "C",
+  "autoFetchLyrics": true,
+  "lyricsPriority": [
+    "local_synced",
+    "online_synced",
+    "offline_static",
+    "online_static"
+  ],
+  "customSettings": {},
+  "lastSaved": ""
+}

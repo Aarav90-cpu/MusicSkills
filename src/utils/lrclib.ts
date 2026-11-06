@@ -20,6 +20,13 @@ export interface LRCLibRecord {
 const LRCLIB_BASE_URL = 'https://lrclib.net/api';
 const USER_AGENT = 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)';
 
+export interface LRCLibQueryParams {
+  track_name?: string;
+  artist_name?: string;
+  album_name?: string;
+  duration?: number;
+}
+
 /**
  * Fetch best-matching lyrics by track signature (title, artist, album, duration)
  */
@@ -63,11 +70,20 @@ export async function getLyricsFromLRCLib(params: {
 /**
  * Search lyrics by query keyword (track title, artist, or album)
  */
-export async function searchLyricsFromLRCLib(queryText: string): Promise<LRCLibRecord[]> {
-  if (!queryText.trim()) return [];
-
+export async function searchLyricsFromLRCLib(
+  queryInput: string | LRCLibQueryParams
+): Promise<LRCLibRecord[]> {
   const query = new URLSearchParams();
-  query.set('q', queryText.trim());
+
+  if (typeof queryInput === 'string') {
+    if (!queryInput.trim()) return [];
+    query.set('q', queryInput.trim());
+  } else {
+    if (queryInput.track_name) query.set('track_name', queryInput.track_name);
+    if (queryInput.artist_name) query.set('artist_name', queryInput.artist_name);
+    if (queryInput.album_name) query.set('album_name', queryInput.album_name);
+    if (!queryInput.track_name && !queryInput.artist_name) return [];
+  }
 
   try {
     const res = await fetch(`${LRCLIB_BASE_URL}/search?${query.toString()}`, {
@@ -90,8 +106,21 @@ export async function searchLyricsFromLRCLib(queryText: string): Promise<LRCLibR
 /**
  * Helper to fetch the first matching synced lyric record
  */
-export async function searchFirstLyricsFromLRCLib(queryText: string): Promise<LRCLibRecord | null> {
-  const records = await searchLyricsFromLRCLib(queryText);
+export async function searchFirstLyricsFromLRCLib(
+  queryInput: string | LRCLibQueryParams
+): Promise<LRCLibRecord | null> {
+  // If structured params are provided with track and artist, try exact get endpoint first
+  if (typeof queryInput !== 'string' && queryInput.track_name && queryInput.artist_name) {
+    const exact = await getLyricsFromLRCLib({
+      trackName: queryInput.track_name,
+      artistName: queryInput.artist_name,
+      albumName: queryInput.album_name,
+      durationSec: queryInput.duration,
+    });
+    if (exact) return exact;
+  }
+
+  const records = await searchLyricsFromLRCLib(queryInput);
   if (records.length === 0) return null;
 
   // Prefer records that have syncedLyrics

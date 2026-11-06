@@ -19,9 +19,26 @@ Writing great music with AI requires moving beyond robotic, mechanically aligned
 
 ---
 
+## System Requirements & External Dependencies
+
+MusicSkills Studio combines Python algorithmic MIDI synthesis, FluidSynth soundfont rendering, and FFmpeg audio transcoding.
+
+### 1. Prerequisites by Operating System
+
+| Tool | Purpose | Ubuntu / Debian | Arch Linux | macOS (Homebrew) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Python 3** (>= 3.10) | MIDI composition, humanization, theory calculations | `sudo apt install python3 python3-pip python3-venv` | `sudo pacman -S python python-pip` | `brew install python` |
+| **FFmpeg** | WAV to MP3 transcoding, vocal mixing, Remotion rendering | `sudo apt install ffmpeg` | `sudo pacman -S ffmpeg` | `brew install ffmpeg` |
+| **FluidSynth** | Software SoundFont synthesizer rendering MIDI to audio | `sudo apt install fluidsynth` | `sudo pacman -S fluidsynth` | `brew install fluidsynth` |
+| **SoundFonts** | General MIDI instrument samples (`FluidR3_GM.sf2`) | `sudo apt install fluid-soundfont-gm` | `sudo pacman -S soundfont-fluid` | `brew install fluid-soundfont` |
+| **Chromium** *(Optional)* | Headless video rendering for Remotion music videos | `sudo apt install chromium` | `sudo pacman -S chromium` | `brew install --cask chromium` |
+| **Node.js** (>= 18) | Full-stack web studio, Vercel AI SDK, Material 3 UI | `sudo apt install nodejs npm` | `sudo pacman -S nodejs npm` | `brew install node` |
+
+---
+
 ## Installation & Environment Setup
 
-This project uses a dedicated Python virtual environment and the `mido` MIDI library.
+This project uses a dedicated Python virtual environment for MIDI synthesis and Node.js for the studio web interface.
 
 ```bash
 # 1. Create a Python virtual environment
@@ -30,8 +47,14 @@ python3 -m venv --system-site-packages .venv
 # 2. Activate the virtual environment
 source .venv/bin/activate
 
-# 3. Install mido and required tools
+# 3. Install mido and Python MIDI tools
 pip install -r requirements.txt
+
+# 4. Install studio web application dependencies
+npm install
+
+# 5. Start the full-stack MusicSkills Studio
+npm run dev
 ```
 
 Verify the installation of `mido` CLI tools:

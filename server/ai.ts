@@ -55,6 +55,45 @@ export async function testApiKey(
   }
 }
 
+export async function fetchLRCLibReference(
+  query: string
+): Promise<{ trackName: string; artistName: string; lyricsText: string; syncedLyrics?: string } | null> {
+  try {
+    let cleanQuery = query.trim();
+    const match = query.match(/(?:based on|lyrics of|like|inspired by)\s+(?:the\s+lyrics\s+of\s+)?["']?([^"']+)["']?/i);
+    if (match) {
+      cleanQuery = match[1].trim();
+    }
+
+    const encoded = encodeURIComponent(cleanQuery);
+    const res = await fetch(`https://lrclib.net/api/search?q=${encoded}`, {
+      headers: {
+        'User-Agent': 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)',
+        'Lrclib-Client': 'MusicSkills-Studio/1.0.0',
+      },
+    });
+
+    if (res.ok) {
+      const records = await res.json();
+      if (Array.isArray(records) && records.length > 0) {
+        const best = records.find((r: any) => Boolean(r.plainLyrics || r.syncedLyrics)) || records[0];
+        const rawLyrics = best.plainLyrics || (best.syncedLyrics ? best.syncedLyrics.replace(/\[\d+:\d+\.\d+\]/g, '').trim() : '');
+        if (rawLyrics) {
+          return {
+            trackName: best.trackName,
+            artistName: best.artistName,
+            lyricsText: rawLyrics,
+            syncedLyrics: best.syncedLyrics || undefined,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AI Engine] Failed to query LRCLIB for baseline:', err);
+  }
+  return null;
+}
+
 export async function generateLyrics(params: {
   topic: string;
   genre: string;
@@ -62,6 +101,8 @@ export async function generateLyrics(params: {
   purpose: string;
   vocalDelivery: string;
   sections: Array<{ name: string; type: string; bars: number }>;
+  referenceSong?: string;
+  referenceLyrics?: string;
 }): Promise<Record<string, string[]>> {
   const config = loadConfig();
 
@@ -79,12 +120,28 @@ export async function generateLyrics(params: {
         ? params.sections.filter(s => s.type !== 'intro' && s.type !== 'outro' && s.type !== 'instrumental_break').map(s => s.name)
         : ['Verse 1', 'Pre-Chorus', 'Chorus 1', 'Verse 2', 'Chorus 2', 'Bridge', 'Chorus 3'];
 
+      let baselineContext = '';
+      if (params.referenceLyrics) {
+        baselineContext = `\nReference Song Baseline:\n${params.referenceLyrics}\n`;
+      } else if (
+        params.referenceSong ||
+        params.topic.toLowerCase().includes('based on') ||
+        params.topic.toLowerCase().includes('lyrics of') ||
+        params.topic.toLowerCase().includes('inspired by')
+      ) {
+        const queryToSearch = params.referenceSong || params.topic;
+        const ref = await fetchLRCLibReference(queryToSearch);
+        if (ref) {
+          baselineContext = `\nReference Baseline Song: "${ref.trackName}" by ${ref.artistName}\nBaseline Lyrics:\n${ref.lyricsText}\n\nInstruction: Write an original song inspired by the themes, rhyme cadence, and narrative arc of this baseline track. Do not copy lines verbatim; reinterpret the imagery and emotion into ${params.genre}.\n`;
+        }
+      }
+
       const systemPrompt = `You are an elite music lyricist and vocal arranger.
 Genre: ${params.genre}
 Mood: ${params.mood}
 Purpose: ${params.purpose}
 Vocal Style: ${params.vocalDelivery}
-Topic: ${params.topic}
+Topic: ${params.topic}${baselineContext}
 
 Structure your output strictly by section:
 [Section Name]

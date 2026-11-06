@@ -20,6 +20,7 @@ MusicSkills/
 ├── SKILL.md                          # Primary agent instruction, activation rules, and architecture map (this file)
 ├── README.md                         # User documentation, installation guide, disclaimer, and CLI tutorial
 ├── LICENSE                           # Official MIT License
+├── settings.json                     # Primary persistent studio configuration (exportable/importable)
 ├── requirements.txt                  # Python dependencies (mido>=1.3.0)
 ├── .gitignore                        # Git ignore patterns (.venv, cache, generated outputs)
 ├── references/                       # In-depth technical documentation for agents & producers
@@ -33,6 +34,7 @@ MusicSkills/
 │   ├── humanizer.py                  # Humanization algorithms (jitter, dynamic velocity, natural duration drift)
 │   ├── lyrics_timing.py              # Timestamp generator (lead sheets, LRC, SRT, JSON)
 │   ├── song_generator.py             # Core generator (harmony, bass, vocal guide melody, drums -> Standard MIDI)
+│   ├── lrclib_client.py              # LRCLIB API client for synchronized and baseline reference lyrics
 │   └── cli.py                        # User-friendly CLI utility (`python -m scripts.cli`)
 ├── server/                           # Full-Stack Express backend with Vercel AI SDK & Audio Engine
 │   ├── index.ts                      # Express server + Vite middleware dev integration (port 3000)

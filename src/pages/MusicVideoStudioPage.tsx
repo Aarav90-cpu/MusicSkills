@@ -502,3 +502,4 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
     </div>
   );
 };
+

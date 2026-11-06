@@ -417,3 +417,4 @@ export const FloatingChatBox: React.FC = () => {
     </div>
   );
 };
+

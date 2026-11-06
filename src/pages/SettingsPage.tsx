@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { openGitHubIssueReport } from '../utils/githubReporting';
 
@@ -35,11 +35,31 @@ export const SettingsPage: React.FC = () => {
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // Load config on mount
+  // System Tool Diagnostics
+  const [dependencies, setDependencies] = useState<Record<string, any> | null>(null);
+  const [isRefreshingDeps, setIsRefreshingDeps] = useState<boolean>(false);
+  const settingsInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Fetch System Dependencies Status
+  const fetchDependencies = async () => {
+    setIsRefreshingDeps(true);
+    try {
+      const res = await fetch('/api/system/dependencies');
+      if (res.ok) {
+        const data = await res.json();
+        setDependencies(data);
+      }
+    } catch (_) {
+    } finally {
+      setIsRefreshingDeps(false);
+    }
+  };
+
+  // Load config on mount from settings.json
   useEffect(() => {
     async function loadConfig() {
       try {
-        const res = await fetch('/api/config');
+        const res = await fetch('/api/settings');
         if (res.ok) {
           const cfg = await res.json();
           if (cfg.provider) setProvider(cfg.provider);
@@ -58,6 +78,7 @@ export const SettingsPage: React.FC = () => {
       }
     }
     loadConfig();
+    fetchDependencies();
   }, []);
 
   // Update models based on provider with 2026 frontier architectures
@@ -144,7 +165,7 @@ export const SettingsPage: React.FC = () => {
         },
       };
 
-      const res = await fetch('/api/config', {
+      const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -152,11 +173,11 @@ export const SettingsPage: React.FC = () => {
 
       if (res.ok) {
         await checkStatus();
-        showSnackbar('Studio settings saved successfully');
+        showSnackbar('Studio settings.json saved successfully');
         addActivityEvent({
           stage: 'Settings Updated',
           status: 'done',
-          details: 'Global studio configuration synchronized',
+          details: 'Global studio configuration synchronized with settings.json',
         });
       } else {
         showSnackbar('Failed to save settings');
@@ -168,10 +189,59 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleExportSettings = () => {
+    window.open('/api/settings/export', '_blank');
+    showSnackbar('Exporting settings.json...');
+  };
+
+  const handleImportSettings = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const res = await fetch('/api/settings/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: text,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const cfg = data.settings;
+        if (cfg.provider) setProvider(cfg.provider);
+        if (cfg.model) setModel(cfg.model);
+        if (cfg.apiKey) setApiKey(cfg.apiKey);
+        if (cfg.creativity !== undefined) setCreativity(cfg.creativity);
+        if (cfg.soundfontPath) setSoundfontPath(cfg.soundfontPath);
+        if (cfg.humanization) {
+          if (cfg.humanization.timingJitterTicks !== undefined) setTimingJitterTicks(cfg.humanization.timingJitterTicks);
+          if (cfg.humanization.velocityAccentVariance !== undefined) setVelocityAccentVariance(cfg.humanization.velocityAccentVariance);
+          if (cfg.humanization.durationDriftPercent !== undefined) setDurationDriftPercent(cfg.humanization.durationDriftPercent);
+        }
+        showSnackbar('Imported settings.json and applied configuration!');
+      } else {
+        showSnackbar('Failed to import settings.json: invalid format');
+      }
+    } catch (err: any) {
+      showSnackbar(`Import error: ${err.message}`);
+    } finally {
+      if (settingsInputRef.current) settingsInputRef.current.value = '';
+    }
+  };
+
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '32px 24px 100px 24px' }}>
+      <input
+        type="file"
+        ref={settingsInputRef}
+        accept=".json"
+        onChange={handleImportSettings}
+        style={{ display: 'none' }}
+      />
+
       {/* HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '28px' }}>
@@ -182,34 +252,55 @@ export const SettingsPage: React.FC = () => {
             </h1>
           </div>
           <p style={{ fontSize: '14px', color: 'var(--color-text-medium)', margin: 0 }}>
-            Configure your AI co-writing model, humanization engine, and audio synthesis pipeline.
+            Configure your AI co-writing model, humanization engine, and persistent settings.json.
           </p>
         </div>
 
-        <button
-          onClick={handleSaveSettings}
-          disabled={isSaving}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '10px 24px',
-            backgroundColor: 'var(--color-primary)',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: 'var(--radius-pill)',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: isSaving ? 'not-allowed' : 'pointer',
-            opacity: isSaving ? 0.7 : 1,
-            boxShadow: '0 4px 16px rgba(183, 166, 255, 0.25)',
-          }}
-        >
-          <span className="material-icons-round" style={{ fontSize: '18px' }}>
-            save
-          </span>
-          {isSaving ? 'Saving...' : 'Save Settings'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            onClick={handleExportSettings}
+            className="btn btn-tonal"
+            style={{ height: '38px', padding: '0 14px', fontSize: '13px', fontWeight: 600 }}
+            title="Download settings.json to transfer to other devices"
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>file_download</span>
+            Export settings.json
+          </button>
+
+          <button
+            onClick={() => settingsInputRef.current?.click()}
+            className="btn btn-tonal"
+            style={{ height: '38px', padding: '0 14px', fontSize: '13px', fontWeight: 600 }}
+            title="Import an existing settings.json configuration"
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>file_upload</span>
+            Import settings.json
+          </button>
+
+          <button
+            onClick={handleSaveSettings}
+            disabled={isSaving}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              backgroundColor: 'var(--color-primary)',
+              color: '#000000',
+              border: 'none',
+              borderRadius: 'var(--radius-pill)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: isSaving ? 'not-allowed' : 'pointer',
+              opacity: isSaving ? 0.7 : 1,
+            }}
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>
+              save
+            </span>
+            {isSaving ? 'Saving...' : 'Save settings.json'}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -715,6 +806,112 @@ export const SettingsPage: React.FC = () => {
                 <span className="material-icons-round" style={{ fontSize: '18px' }}>archive</span>
                 Export Active Project ({activeChat?.name || chats[0].name})
               </button>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION 5.5: SYSTEM DEPENDENCIES & TOOL PREREQUISITES */}
+        <div
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-outline)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '24px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '22px' }}>
+                build_circle
+              </span>
+              <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-text-high)', margin: 0 }}>
+                System Tool Prerequisites & Diagnostics
+              </h2>
+            </div>
+            <button
+              onClick={fetchDependencies}
+              disabled={isRefreshingDeps}
+              className="btn btn-tonal"
+              style={{ height: '32px', padding: '0 12px', fontSize: '12px' }}
+            >
+              <span className="material-icons-round" style={{ fontSize: '16px' }}>
+                {isRefreshingDeps ? 'sync' : 'refresh'}
+              </span>
+              Re-scan System
+            </button>
+          </div>
+
+          <p style={{ fontSize: '13px', color: 'var(--color-text-medium)', marginBottom: '18px', lineHeight: 1.5 }}>
+            MusicSkills Studio relies on local audio renderers (FFmpeg, FluidSynth), Python 3, browser visualizers (Chromium), and General MIDI SoundFonts. Diagnostics below report live host machine detection.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+            {dependencies ? (
+              Object.entries(dependencies).map(([key, info]: [string, any]) => {
+                const isOk = Boolean(info.installed);
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      padding: '14px',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--color-surface-container)',
+                      border: isOk ? '1px solid var(--color-outline)' : '1px solid #FF453A',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--color-text-high)' }}>
+                        {info.name || key}
+                      </span>
+                      <span
+                        className="chip"
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          backgroundColor: isOk ? 'rgba(40, 200, 100, 0.15)' : 'rgba(255, 69, 58, 0.15)',
+                          color: isOk ? '#28c864' : '#FF453A',
+                          height: '20px',
+                          padding: '0 6px',
+                        }}
+                      >
+                        {isOk ? 'Detected' : info.required ? 'Missing (Required)' : 'Optional'}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
+                      {info.purpose}
+                    </div>
+
+                    {info.path && (
+                      <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--color-text-medium)', marginTop: '2px' }}>
+                        Path: {info.path}
+                      </div>
+                    )}
+
+                    {info.version && (
+                      <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--color-text-secondary)' }}>
+                        {info.version}
+                      </div>
+                    )}
+
+                    {!isOk && info.installCommand && (
+                      <div style={{ marginTop: '4px', fontSize: '11px', backgroundColor: 'var(--color-container)', padding: '6px 8px', borderRadius: '4px' }}>
+                        <span style={{ color: 'var(--color-text-secondary)' }}>Install command:</span>
+                        <div style={{ fontFamily: 'monospace', color: 'var(--color-primary)', marginTop: '2px', wordBreak: 'break-all' }}>
+                          {info.installCommand}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', padding: '20px' }}>
+                Scanning host system dependencies...
+              </div>
             )}
           </div>
         </div>

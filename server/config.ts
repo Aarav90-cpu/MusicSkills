@@ -6,15 +6,27 @@ export interface AppConfig {
   model: string;
   apiKey: string;
   creativity: number; // 0.0 to 1.0 (temperature)
-  humanization: 'off' | 'light' | 'natural' | 'loose';
+  humanization: {
+    timingJitterTicks: number;
+    velocityAccentVariance: number;
+    durationDriftPercent: number;
+  };
   mp3Bitrate: string;
   soundfontPath: string;
   theme: 'dark' | 'light' | 'system';
   chatsDir: string;
   inputDevice: string;
+  defaultGenre: string;
+  defaultBpm: number;
+  defaultKey: string;
+  autoFetchLyrics: boolean;
+  lyricsPriority: Array<'local_synced' | 'online_synced' | 'offline_static' | 'online_static'>;
+  customSettings: Record<string, any>;
+  lastSaved: string;
 }
 
-const CONFIG_FILE = path.resolve(process.cwd(), '.config.json');
+export const SETTINGS_FILE = path.resolve(process.cwd(), 'settings.json');
+export const LEGACY_CONFIG_FILE = path.resolve(process.cwd(), '.config.json');
 
 const SOUNDFONT_CANDIDATES = [
   process.env.SOUNDFONT_PATH,
@@ -38,12 +50,23 @@ const DEFAULT_CONFIG: AppConfig = {
   model: 'claude-sonnet-5-5',
   apiKey: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || '',
   creativity: 0.7,
-  humanization: 'natural',
+  humanization: {
+    timingJitterTicks: 7,
+    velocityAccentVariance: 12,
+    durationDriftPercent: 5,
+  },
   mp3Bitrate: '192k',
   soundfontPath: getDiscoveredSoundfont(),
-  theme: 'dark', // Dark Studio Mode is priority
+  theme: 'dark', // Dark Studio Mode has highest priority
   chatsDir: path.resolve(process.cwd(), '.chats'),
   inputDevice: 'default',
+  defaultGenre: 'pop',
+  defaultBpm: 120,
+  defaultKey: 'C',
+  autoFetchLyrics: true,
+  lyricsPriority: ['local_synced', 'online_synced', 'offline_static', 'online_static'],
+  customSettings: {},
+  lastSaved: new Date().toISOString(),
 };
 
 export function resolveChatsDirectory(configuredPath?: string): string {
@@ -57,8 +80,9 @@ export function resolveChatsDirectory(configuredPath?: string): string {
 
 export function loadConfig(): AppConfig {
   try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
+    // 1. Try modern settings.json
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
       const chatsDir = resolveChatsDirectory(parsed.chatsDir);
       const soundfontPath = parsed.soundfontPath && fs.existsSync(parsed.soundfontPath)
@@ -72,21 +96,61 @@ export function loadConfig(): AppConfig {
         soundfontPath,
       };
     }
+
+    // 2. Fall back to legacy .config.json
+    if (fs.existsSync(LEGACY_CONFIG_FILE)) {
+      const raw = fs.readFileSync(LEGACY_CONFIG_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      const chatsDir = resolveChatsDirectory(parsed.chatsDir);
+      const soundfontPath = parsed.soundfontPath && fs.existsSync(parsed.soundfontPath)
+        ? parsed.soundfontPath
+        : getDiscoveredSoundfont();
+
+      const merged: AppConfig = {
+        ...DEFAULT_CONFIG,
+        ...parsed,
+        chatsDir,
+        soundfontPath,
+      };
+
+      // Auto-migrate to settings.json
+      saveConfig(merged);
+      return merged;
+    }
   } catch (err) {
-    console.error('Error loading .config.json:', err);
+    console.error('Error loading settings.json:', err);
   }
   return { ...DEFAULT_CONFIG };
 }
 
 export function saveConfig(updates: Partial<AppConfig>): AppConfig {
   const current = loadConfig();
-  const merged = { ...current, ...updates };
+  const merged: AppConfig = {
+    ...current,
+    ...updates,
+    lastSaved: new Date().toISOString(),
+  };
+
   try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+    const formatted = JSON.stringify(merged, null, 2);
+    // Write primary settings.json
+    fs.writeFileSync(SETTINGS_FILE, formatted, 'utf-8');
+    // Maintain legacy sync
+    fs.writeFileSync(LEGACY_CONFIG_FILE, formatted, 'utf-8');
   } catch (err) {
-    console.error('Error saving .config.json:', err);
+    console.error('Error saving settings.json:', err);
   }
   return merged;
+}
+
+export function exportSettingsJson(): string {
+  const current = loadConfig();
+  return JSON.stringify(current, null, 2);
+}
+
+export function importSettingsJson(jsonContent: string): AppConfig {
+  const parsed = JSON.parse(jsonContent);
+  return saveConfig(parsed);
 }
 
 export function maskKey(key: string): string {
@@ -94,4 +158,3 @@ export function maskKey(key: string): string {
   if (key.length <= 8) return '••••' + key.slice(-2);
   return '••••••••' + key.slice(-4);
 }
-

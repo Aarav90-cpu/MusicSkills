@@ -5,12 +5,29 @@ import path from 'path';
 import multer from 'multer';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { loadConfig, saveConfig, maskKey } from './config';
+import { loadConfig, saveConfig, exportSettingsJson, importSettingsJson, maskKey, SETTINGS_FILE } from './config';
 
 const execFileAsync = promisify(execFile);
 import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap } from './chats';
-import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey } from './ai';
+import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey, fetchLRCLibReference } from './ai';
 import { renderSong, mixVocalTake } from './audio';
+
+async function checkCommand(cmd: string, args: string[]): Promise<{ installed: boolean; version?: string; path?: string }> {
+  try {
+    const whichRes = await execFileAsync('which', [cmd]);
+    const binPath = whichRes.stdout.trim();
+    if (!binPath) return { installed: false };
+    try {
+      const verRes = await execFileAsync(binPath, args);
+      const firstLine = (verRes.stdout || verRes.stderr).split('\n')[0].trim();
+      return { installed: true, version: firstLine, path: binPath };
+    } catch {
+      return { installed: true, path: binPath };
+    }
+  } catch {
+    return { installed: false };
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
@@ -59,6 +76,103 @@ app.post('/api/config', (req, res) => {
     ...updated,
     apiKeyMasked: maskKey(updated.apiKey),
     hasApiKey: Boolean(updated.apiKey && updated.apiKey.length > 0),
+  });
+});
+
+app.get('/api/settings', (req, res) => {
+  const config = loadConfig();
+  res.json({
+    ...config,
+    apiKeyMasked: maskKey(config.apiKey),
+    hasApiKey: Boolean(config.apiKey && config.apiKey.length > 0),
+  });
+});
+
+app.post('/api/settings', (req, res) => {
+  const updates = req.body;
+  const updated = saveConfig(updates);
+  res.json({
+    ...updated,
+    apiKeyMasked: maskKey(updated.apiKey),
+    hasApiKey: Boolean(updated.apiKey && updated.apiKey.length > 0),
+  });
+});
+
+app.get('/api/settings/export', (req, res) => {
+  const jsonContent = exportSettingsJson();
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', 'attachment; filename="settings.json"');
+  res.send(jsonContent);
+});
+
+app.post('/api/settings/import', (req, res) => {
+  try {
+    let settingsObj = req.body;
+    if (typeof settingsObj === 'string') {
+      settingsObj = JSON.parse(settingsObj);
+    }
+    const updated = saveConfig(settingsObj);
+    res.json({ success: true, settings: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: 'Invalid settings.json file', details: err.message });
+  }
+});
+
+app.get('/api/system/dependencies', async (req, res) => {
+  const [python, ffmpeg, fluidsynth, chromium, node] = await Promise.all([
+    checkCommand('python3', ['--version']),
+    checkCommand('ffmpeg', ['-version']),
+    checkCommand('fluidsynth', ['--version']),
+    checkCommand('chromium', ['--version']).then(async r => r.installed ? r : checkCommand('google-chrome', ['--version'])),
+    checkCommand('node', ['--version']),
+  ]);
+
+  const config = loadConfig();
+  const soundfontInstalled = fs.existsSync(config.soundfontPath);
+
+  res.json({
+    python3: {
+      ...python,
+      required: true,
+      name: 'Python 3',
+      purpose: 'MIDI generation, Humanizer engine, and musical theory calculation',
+      installCommand: 'sudo apt install python3 python3-pip python3-venv',
+    },
+    ffmpeg: {
+      ...ffmpeg,
+      required: true,
+      name: 'FFmpeg',
+      purpose: 'Audio transcoding (WAV to MP3), normalization, and video stream mixing',
+      installCommand: 'sudo apt install ffmpeg',
+    },
+    fluidsynth: {
+      ...fluidsynth,
+      required: true,
+      name: 'FluidSynth',
+      purpose: 'SoundFont software synthesizer rendering MIDI files to high-fidelity audio',
+      installCommand: 'sudo apt install fluidsynth fluid-soundfont-gm',
+    },
+    chromium: {
+      ...chromium,
+      required: false,
+      name: 'Chromium / Chrome',
+      purpose: 'Headless browser rendering for Remotion music video exports and WebGL canvas snapshots',
+      installCommand: 'sudo apt install chromium || sudo apt install google-chrome-stable',
+    },
+    soundfont: {
+      installed: soundfontInstalled,
+      path: config.soundfontPath,
+      required: true,
+      name: 'General MIDI SoundFont Bank',
+      purpose: 'Acoustic and synthesized sample banks (FluidR3_GM.sf2) supplying instruments',
+      installCommand: 'sudo apt install fluid-soundfont-gm soundfont-fluid',
+    },
+    node: {
+      ...node,
+      required: true,
+      name: 'Node.js & npm',
+      purpose: 'Full-stack studio runtime and API server',
+    },
   });
 });
 
@@ -216,7 +330,7 @@ app.patch('/api/chats/:id/lyrics-sync', (req, res) => {
 // --- AI SONGWRITING & LYRICS ROUTES ---
 
 app.post('/api/ai/lyrics', async (req, res) => {
-  const { topic, genre, mood, purpose, vocalDelivery, sections } = req.body;
+  const { topic, genre, mood, purpose, vocalDelivery, sections, referenceSong, referenceLyrics } = req.body;
   try {
     const lyrics = await generateLyrics({
       topic,
@@ -225,6 +339,8 @@ app.post('/api/ai/lyrics', async (req, res) => {
       purpose,
       vocalDelivery,
       sections: sections || [],
+      referenceSong,
+      referenceLyrics,
     });
     res.json({ lyrics });
   } catch (err: any) {
@@ -254,13 +370,25 @@ app.post('/api/ai/chat', async (req, res) => {
 
   if (config.apiKey) {
     try {
+      let referenceContext = '';
+      if (
+        message.toLowerCase().includes('based on') ||
+        message.toLowerCase().includes('lyrics of') ||
+        message.toLowerCase().includes('inspired by')
+      ) {
+        const ref = await fetchLRCLibReference(message);
+        if (ref) {
+          referenceContext = `\n\n[LRCLIB Tool: Reference Song Baseline Loaded]\nTitle: "${ref.trackName}" by ${ref.artistName}\nBaseline Lyrics:\n${ref.lyricsText}\nInstruction: The user wants their song inspired by or based on this baseline track. Use its themes, rhythm, and phrasing structure to guide your output without copying verbatim.`;
+        }
+      }
+
       const model = getAIModel();
       const { text } = await (await import('ai')).generateText({
         model,
         system: `You are an expert music co-writer assisting with the song "${chat.name}".
 Style: ${style?.genre || 'Pop'} (${style?.moods?.join(', ') || 'Energetic'})
 Current Lyrics:
-${JSON.stringify(currentLyrics, null, 2)}
+${JSON.stringify(currentLyrics, null, 2)}${referenceContext}
 
 Incorporate the user's instructions.
 If modifying lyrics, output the updated sections clearly in format [Section Name] followed by lines.

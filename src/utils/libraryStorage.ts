@@ -1,6 +1,7 @@
 /**
  * MusicSkills Studio - Library & Player Storage Utility
- * Manages user playlists, albums, favorite tracks, and listening/coding analytics.
+ * Tracks genuine user listening sessions, coding time, AI token usage,
+ * custom playlists, and favorite tracks without synthetic placeholders.
  * Strictly zero-emoji.
  */
 
@@ -26,25 +27,24 @@ export interface StudioStats {
 const STATS_STORAGE_KEY = 'musicskills_studio_stats_v1';
 const PLAYLISTS_STORAGE_KEY = 'musicskills_studio_playlists_v1';
 
+// Real zero-baseline statistics
 const DEFAULT_STATS: StudioStats = {
-  listeningSeconds: 1240, // realistic initial start
-  codingSeconds: 3820,
-  songsCreated: 3,
-  promptTokens: 18450,
-  completionTokens: 6240,
+  listeningSeconds: 0,
+  codingSeconds: 0,
+  songsCreated: 0,
+  promptTokens: 0,
+  completionTokens: 0,
   favoriteTrackIds: [],
-  genrePlays: {
-    pop: 4,
-    rock: 2,
-    phonk: 6,
-    electronic: 3,
-  },
+  genrePlays: {},
 };
 
 export function loadStudioStats(): StudioStats {
   try {
     const raw = localStorage.getItem(STATS_STORAGE_KEY);
-    if (raw) return { ...DEFAULT_STATS, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_STATS, ...parsed };
+    }
   } catch (_) {}
   return { ...DEFAULT_STATS };
 }
@@ -56,64 +56,61 @@ export function saveStudioStats(stats: StudioStats): void {
 }
 
 export function incrementListeningTime(seconds: number = 1): void {
+  if (seconds <= 0) return;
   const current = loadStudioStats();
   current.listeningSeconds += seconds;
   saveStudioStats(current);
 }
 
 export function incrementCodingTime(seconds: number = 1): void {
+  if (seconds <= 0) return;
   const current = loadStudioStats();
   current.codingSeconds += seconds;
   saveStudioStats(current);
 }
 
-export function addTokenUsage(promptTokens: number, completionTokens: number): void {
+export function recordGenrePlay(genre: string): void {
+  if (!genre) return;
+  const cleanGenre = genre.trim().toLowerCase();
   const current = loadStudioStats();
-  current.promptTokens += promptTokens;
-  current.completionTokens += completionTokens;
+  current.genrePlays[cleanGenre] = (current.genrePlays[cleanGenre] || 0) + 1;
   saveStudioStats(current);
 }
 
-export function toggleFavoriteTrack(chatId: string): boolean {
+export function addTokenUsage(promptTokens: number, completionTokens: number): void {
   const current = loadStudioStats();
-  const exists = current.favoriteTrackIds.includes(chatId);
+  current.promptTokens += Math.max(0, promptTokens);
+  current.completionTokens += Math.max(0, completionTokens);
+  saveStudioStats(current);
+}
+
+export function toggleFavoriteTrack(trackId: string): boolean {
+  const current = loadStudioStats();
+  const exists = current.favoriteTrackIds.includes(trackId);
   if (exists) {
-    current.favoriteTrackIds = current.favoriteTrackIds.filter(id => id !== chatId);
+    current.favoriteTrackIds = current.favoriteTrackIds.filter(id => id !== trackId);
   } else {
-    current.favoriteTrackIds.push(chatId);
+    current.favoriteTrackIds.push(trackId);
   }
   saveStudioStats(current);
   return !exists;
 }
 
-export function isTrackFavorite(chatId: string): boolean {
+export function isTrackFavorite(trackId: string): boolean {
   const current = loadStudioStats();
-  return current.favoriteTrackIds.includes(chatId);
+  return current.favoriteTrackIds.includes(trackId);
 }
 
+// Clean playlists: no placeholders, purely user-defined
 export function loadPlaylists(): Playlist[] {
   try {
     const raw = localStorage.getItem(PLAYLISTS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Playlist[];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
   } catch (_) {}
-  return [
-    {
-      id: 'pl-heavy-rotation',
-      name: 'Heavy Studio Rotation',
-      description: 'Top master tracks and high-energy workout songs',
-      trackIds: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: 'pl-acoustic-chill',
-      name: 'Acoustic & Storytelling',
-      description: 'Intimate melodies and lyrical storytelling',
-      trackIds: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
+  return [];
 }
 
 export function savePlaylists(playlists: Playlist[]): void {
@@ -128,7 +125,7 @@ export function createPlaylist(name: string, description: string = ''): Playlist
   const newPl: Playlist = {
     id: `pl-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     name: name.trim() || 'New Playlist',
-    description,
+    description: description.trim(),
     trackIds: [],
     createdAt: now,
     updatedAt: now,
@@ -156,4 +153,10 @@ export function removeTrackFromPlaylist(playlistId: string, trackId: string): vo
     pl.updatedAt = new Date().toISOString();
     savePlaylists(playlists);
   }
+}
+
+export function deletePlaylist(playlistId: string): void {
+  const playlists = loadPlaylists();
+  const filtered = playlists.filter(p => p.id !== playlistId);
+  savePlaylists(filtered);
 }

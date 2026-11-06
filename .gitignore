@@ -52,5 +52,6 @@ node_modules/
 dist/
 .chats/
 .config.json
+settings.json
 
 
