@@ -1,0 +1,4 @@
+"""
+MusicSkills Examples Suite.
+"""
+
