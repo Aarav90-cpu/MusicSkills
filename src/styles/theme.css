@@ -1,0 +1,328 @@
+/*
+ * MusicSkills Studio - Material 3 Design System
+ * DARK MODE HAS HIGHEST PRIORITY (Studio Mode Default)
+ * Absolutely NO EMOJIS!
+ */
+
+:root {
+  /* DARK STUDIO MODE (DEFAULT & HIGHEST PRIORITY) */
+  --color-bg: #0F0E15;
+  --color-surface: #16151D;
+  --color-surface-tint: #1B1925;
+  --color-container: #1F1D29;
+  --color-container-high: #2A2737;
+  --color-outline: #2E2A3E;
+  --color-outline-variant: #3F3B52;
+  
+  --color-text: #EDEAF7;
+  --color-text-secondary: #A6A0B8;
+  --color-text-tertiary: #757088;
+  
+  --color-primary: #B7A6FF;
+  --color-primary-container: #3A2D75;
+  --color-on-primary-container: #E7E0FF;
+  
+  /* SIGNATURE GRADIENT (Generate, Play, Waveform, Hero) */
+  --gradient-signature: linear-gradient(120deg, #6B4EFF 0%, #FF4FA3 55%, #FFB020 100%);
+  --gradient-glow: 0 8px 32px rgba(107, 78, 255, 0.35);
+
+  /* STATUS COLORS */
+  --color-success: #1FA971;
+  --color-success-container: rgba(31, 169, 113, 0.15);
+  --color-warning: #F2A100;
+  --color-warning-container: rgba(242, 161, 0, 0.15);
+  --color-error: #D93654;
+  --color-error-container: rgba(217, 54, 84, 0.15);
+
+  /* SONG SECTION COLORS */
+  --section-intro: #8E9BFF;
+  --section-verse: #3CC4B2;
+  --section-prechorus: #FFB020;
+  --section-chorus: #FF4FA3;
+  --section-bridge: #9B5CFF;
+  --section-break: #FF7A45;
+  --section-outro: #8A8FA3;
+
+  /* ELEVATION (DARK) */
+  --shadow-l1: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-l2: 0 4px 14px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-l3: 0 8px 28px rgba(107, 78, 255, 0.22), 0 4px 12px rgba(0, 0, 0, 0.5);
+
+  /* TYPOGRAPHY */
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* SHAPE RADII */
+  --radius-chip: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* TRANSITIONS */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --duration-short: 150ms;
+  --duration-medium: 250ms;
+  --duration-long: 400ms;
+}
+
+/* LIGHT THEME OVERRIDES (OPTIONAL WORKSPACE MODE) */
+html.light {
+  --color-bg: #FFFFFF;
+  --color-surface: #FBFAFE;
+  --color-surface-tint: #F3F0FA;
+  --color-container: #EFEAF7;
+  --color-container-high: #E4DEF0;
+  --color-outline: #CAC4D6;
+  --color-outline-variant: #B7B0C5;
+  
+  --color-text: #1C1B22;
+  --color-text-secondary: #5E5B6A;
+  --color-text-tertiary: #878396;
+  
+  --color-primary: #6B4EFF;
+  --color-primary-container: #E7E0FF;
+  --color-on-primary-container: #21005D;
+
+  --shadow-l1: 0 1px 2px rgba(28, 27, 34, 0.08);
+  --shadow-l2: 0 4px 12px rgba(28, 27, 34, 0.10);
+  --shadow-l3: 0 8px 24px rgba(107, 78, 255, 0.16);
+}
+
+/* GLOBAL RESETS & STYLING */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color var(--duration-medium) var(--ease-standard),
+              color var(--duration-medium) var(--ease-standard);
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* MATERIAL ICONS OVERRIDES */
+.material-icons,
+.material-icons-outlined,
+.material-icons-round {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  user-select: none;
+  font-size: 20px;
+}
+
+/* HEADINGS & DISPLAY */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+}
+
+/* CUSTOM SCROLLBARS */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline-variant);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* SIGNATURE GRADIENT TEXT */
+.gradient-text {
+  background: var(--gradient-signature);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* PILL BUTTONS */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all var(--duration-short) var(--ease-standard);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #0F0E15;
+}
+.btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 16px rgba(183, 166, 255, 0.4);
+}
+
+.btn-gradient {
+  background: var(--gradient-signature);
+  color: #FFFFFF;
+  box-shadow: var(--gradient-glow);
+}
+.btn-gradient:hover {
+  transform: scale(1.02);
+  box-shadow: 0 12px 36px rgba(107, 78, 255, 0.45);
+}
+
+.btn-tonal {
+  background: var(--color-container);
+  color: var(--color-text);
+  border: 1px solid var(--color-outline);
+}
+.btn-tonal:hover {
+  background: var(--color-container-high);
+  border-color: var(--color-outline-variant);
+}
+
+.btn-outlined {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-outline);
+}
+.btn-outlined:hover {
+  background: var(--color-container);
+  border-color: var(--color-primary);
+}
+
+.btn-text {
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 0 12px;
+}
+.btn-text:hover {
+  color: var(--color-text);
+  background: var(--color-container);
+}
+
+/* CARDS */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-l1);
+  transition: transform var(--duration-short) var(--ease-standard),
+              border-color var(--duration-short) var(--ease-standard),
+              box-shadow var(--duration-short) var(--ease-standard);
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-outline-variant);
+  box-shadow: var(--shadow-l2);
+}
+
+/* INPUT FIELDS */
+.input-field {
+  width: 100%;
+  height: 48px;
+  background: var(--color-container);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  padding: 0 16px;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  outline: none;
+  transition: border-color var(--duration-short) var(--ease-standard),
+              box-shadow var(--duration-short) var(--ease-standard);
+}
+.input-field:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(183, 166, 255, 0.25);
+}
+
+/* CHIPS */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--color-container);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-chip);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-short) var(--ease-standard);
+  user-select: none;
+}
+.chip:hover {
+  background: var(--color-container-high);
+  border-color: var(--color-outline-variant);
+}
+.chip-active {
+  background: var(--color-primary-container);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary-container);
+}
+
+/* CODE & MONO TIMESTAMPS */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ANIMATIONS */
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 0.3; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+.pulse-ring {
+  animation: pulse-ring 2s infinite ease-in-out;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--color-container) 25%, var(--color-container-high) 50%, var(--color-container) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}

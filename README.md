@@ -1,4 +1,4 @@
-# MusicSkills 🎵
+# MusicSkills
 
 > [!IMPORTANT]
 > **DISCLAIMER**: **This library does NOT generate vocals or synthetic speech audio!**  
@@ -232,6 +232,45 @@ Sample generated Vocal Lead Sheet:
 
 ---
 
+## MusicSkills Web Studio (Full-Stack UI)
+
+MusicSkills includes a full-stack local web studio powered by **Vercel AI SDK (`ai`)**, **Google Material 3 (`@material/web` tokens & Material Icons)**, and **FluidSynth + FFmpeg local audio rendering**.
+
+### Launching the Studio
+
+```bash
+# 1. Install frontend and server dependencies
+npm install
+
+# 2. Launch the dev server (Express backend + Vite frontend on port 3000)
+npm run dev
+```
+
+Visit `http://localhost:3000` in your browser.
+
+### Key Studio Features
+
+1. **Dark Studio Mode Default**: Deep dark palette (`#0F0E15`) designed specifically for low-light DAW rooms and live performance booths.
+2. **5-Step Song Creation Wizard**:
+   - *Step 1 (Style)*: Topic, genre, mood, purpose, tempo (BPM), key/scale, and 7-section structure timeline.
+   - *Step 2 (Lyrics)*: Dynamic AI lyric authoring (Claude 3.5 Sonnet, Gemini 1.5/2.0, GPT-4o) with rhyme-scheme controls and live editing.
+   - *Step 3 (Review)*: Side-by-side verification of lyrics and section energy dynamics.
+   - *Step 4 (Generate)*: Humanized multi-track MIDI compilation and FluidSynth 192k MP3 synthesis.
+   - *Step 5 (Result)*: Karaoke lyrics player with real-time waveform visualization and download suite.
+3. **Live Vocal Recording Studio**:
+   - Microphone hardware selector and live AudioContext RMS VU level meter.
+   - 4-beat pulsing count-in metronome with audio ticks.
+   - Synchronized scrolling teleprompter with pitch guide ribbons.
+   - Multi-take recording reel (`take-1`, `take-2`, etc.) saved to `.chats/{name}-{id}/vocals/`.
+   - Mixdown & mastering console: vocal level, backing level, studio reverb, and sync offset compensation.
+4. **Iterative Arrangement & A/B Testing**:
+   - Conversational AI co-writing chat dock for iterative arrangement prompts.
+   - A/B instant auditioning deck: switch between versions on-the-fly to compare mixdowns.
+5. **Local-First & Private**:
+   - All projects, audio takes, stems, and MIDI files are kept locally in `.chats/`.
+
+---
+
 ## Testing & Quality Assurance
 
 Run the automated test suite with pytest:
@@ -240,7 +279,7 @@ Run the automated test suite with pytest:
 .venv/bin/python -m pytest tests/ -v
 ```
 
-All 10 unit and integration tests validate timing jitter, dynamic velocity bounds, millisecond formatting, and multi-track MIDI generation.
+All 12 unit and integration tests validate timing jitter, dynamic velocity bounds, millisecond formatting, and multi-track MIDI generation.
 
 ---
 

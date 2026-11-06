@@ -44,4 +44,13 @@ outputs/
 *.midi
 *.lrc
 *.srt
+*.wav
+*.mp3
+
+# Node & Frontend
+node_modules/
+dist/
+.chats/
+.config.json
+
 

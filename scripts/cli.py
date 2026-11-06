@@ -167,7 +167,7 @@ def main() -> int:
     )
 
     lyrics_status = "Custom AI-written lyrics loaded" if ai_lyrics else "Instrumental arrangement (No lyrics provided)"
-    print(f"\n🎵 Generating arrangement for: '{args.topic}'")
+    print(f"\n[INFO] Generating arrangement for: '{args.topic}'")
     print(f"   Genre: {generator.profile.name} | Mood: {generator.mood.capitalize()} | Purpose: {generator.purpose.capitalize()}")
     print(f"   Tempo: {generator.bpm} BPM | Key: {generator.root_key} {generator.profile.scale_type}")
     print(f"   Vocal Track: {lyrics_status}")
@@ -175,13 +175,13 @@ def main() -> int:
 
     results = generator.generate_song(output_dir=args.output_dir, base_name=base_name)
 
-    print("\n✅ Music generation complete! Generated assets:")
+    print("\n[SUCCESS] Music generation complete! Generated assets:")
     print(f"   - Standard MIDI File    : {results['midi']}")
     print(f"   - Vocal Lead Sheet (MD) : {results['lead_sheet']}")
     print(f"   - Synced Lyrics (LRC)   : {results['lrc']}")
     print(f"   - Subtitle Cues (SRT)   : {results['srt']}")
     print(f"   - Timing JSON Map       : {results['json']}")
-    print("\n💡 NOTE: Use .venv/bin/mido-play or your favorite DAW to play the MIDI file.")
+    print("\n[NOTE] Use .venv/bin/mido-play or your favorite DAW to play the MIDI file.")
     print("   Sing along with the precise timestamps provided in the Vocal Lead Sheet!\n")
     return 0
 

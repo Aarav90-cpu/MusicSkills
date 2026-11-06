@@ -33,6 +33,20 @@ MusicSkills/
 │   ├── lyrics_timing.py              # Timestamp generator (lead sheets, LRC, SRT, JSON)
 │   ├── song_generator.py             # Core generator (harmony, bass, vocal guide melody, drums -> Standard MIDI)
 │   └── cli.py                        # User-friendly CLI utility (`python -m scripts.cli`)
+├── server/                           # Full-Stack Express backend with Vercel AI SDK & Audio Engine
+│   ├── index.ts                      # Express server + Vite middleware dev integration (port 3000)
+│   ├── ai.ts                         # Vercel AI SDK integration (Claude, Gemini, OpenAI, local fallback)
+│   ├── audio.ts                      # FluidSynth & FFmpeg 192k MP3 synthesis and vocal mixdown
+│   ├── chats.ts                      # Local storage manager (.chats/{name}-{id}/)
+│   └── config.ts                     # System settings and API credential management
+├── src/                              # Material 3 Dark Studio frontend (React 19 + TypeScript + Vite)
+│   ├── App.tsx                       # Primary studio router
+│   ├── main.tsx                      # Application mount
+│   ├── components/                   # Modular studio components (AppShell, PersistentPlayer, ActivityPanel, Waveform)
+│   ├── pages/                        # Studio views (Welcome, Setup, Home, ChatCreation, VocalStudio, Iterate, Settings)
+│   ├── context/                      # Global AppContext (theme, audio player, activity events, chats)
+│   ├── styles/                       # Material 3 tokens & Dark Studio palette (--color-bg: #0F0E15)
+│   └── types/                        # Complete TypeScript contracts
 ├── examples/                         # Ready-to-run demonstration scripts
 │   ├── __init__.py
 │   ├── generate_phonk_track.py       # Brazilian/Drift Phonk workout track with cowbells & dark mood
@@ -247,5 +261,11 @@ When a user asks for a song, execute the following procedure:
 - **Virtual Environment**: `.venv` located in workspace root.
 - **Python Version**: Python 3.10+ (supports modern Python 3.14).
 - **Core Library**: `mido>=1.3.0` (with bundled tools `mido-play`, `mido-ports`, `mido-connect`, `mido-serve`).
-- **Tests Execution**: `.venv/bin/python -m pytest tests/ -v`.
+- **Tests Execution**: `.venv/bin/python -m pytest tests/ -v` (12 automated unit/integration tests).
+- **Web Studio (Full-Stack UI)**:
+  - Powered by **Vercel AI SDK (`ai`)**, **Google Material 3 (`@material/web` tokens & Material Icons)**, and **FluidSynth + FFmpeg**.
+  - Default: **Dark Studio Mode (`#0F0E15`)** prioritized.
+  - Launch with `npm run dev` at `http://localhost:3000`.
+  - Features 5-step song creation, live vocal recording with teleprompter and metronome count-in, A/B auditioning deck, and 100% local-first storage in `.chats/`.
+
 
