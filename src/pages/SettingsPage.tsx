@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { openGitHubIssueReport } from '../utils/githubReporting';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -649,6 +650,85 @@ export const SettingsPage: React.FC = () => {
           >
             <span className="material-icons-round" style={{ fontSize: '16px' }}>storage</span>
             Storage Directory: /home/aarav/MusicSkills/.chats/ ({chats.length} active projects)
+          </div>
+        </div>
+
+        {/* SECTION 6: GITHUB ISSUE REPORTING & DIAGNOSTICS */}
+        <div
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-outline)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '24px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+            <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '22px' }}>
+              bug_report
+            </span>
+            <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-text-high)', margin: 0 }}>
+              GitHub Issue Reporting & Support
+            </h2>
+          </div>
+
+          <p style={{ fontSize: '13px', color: 'var(--color-text-medium)', marginBottom: '16px', lineHeight: 1.5 }}>
+            Encountered an audio synthesis glitch, model timeout, or soundfont issue? Click below to generate a pre-filled GitHub issue with sanitized environment diagnostics (API keys and private lyrics are completely redacted).
+          </p>
+
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() =>
+                openGitHubIssueReport('User Reported Bug / Diagnostic Report', {
+                  component: 'Studio Settings',
+                  action: 'Manual Issue Submission',
+                  provider,
+                  model,
+                  soundfontStatus: systemStatus?.soundfontExists,
+                })
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                backgroundColor: 'var(--color-surface-container-high)',
+                border: '1px solid var(--color-primary)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--color-text-high)',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
+                bug_report
+              </span>
+              Auto-Report Bug on GitHub
+            </button>
+
+            <button
+              onClick={() => {
+                window.open('https://github.com/aarav/MusicSkills/issues/new?template=feature_request.yml', '_blank', 'noopener,noreferrer');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                backgroundColor: 'var(--color-surface-container)',
+                border: '1px solid var(--color-outline)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--color-text-medium)',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                lightbulb
+              </span>
+              Request New Genre / Feature
+            </button>
           </div>
         </div>
       </div>

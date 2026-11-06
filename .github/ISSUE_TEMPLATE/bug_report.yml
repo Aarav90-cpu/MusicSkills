@@ -1,0 +1,90 @@
+name: Bug Report
+description: Report a reproducible software defect, audio rendering issue, or model error
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue with MusicSkills. Please provide detailed diagnostic context.
+        Note: This library does not generate vocals. Do not report audio synthesis issues regarding vocal generation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Description
+      description: A clear and concise description of the defect encountered.
+      placeholder: Describe what happened versus what you expected to happen...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed step-by-step instructions to reproduce the problem.
+      placeholder: |
+        1. Open Studio at http://localhost:3000
+        2. Set Genre to Rock and Key to C Minor
+        3. Click Generate Music
+        4. Observe the following error...
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: AI Provider & Model
+      description: Select the model used during execution.
+      options:
+        - "Anthropic: Claude Sonnet 5.5"
+        - "Anthropic: Claude Opus 5.5"
+        - "Anthropic: Claude Fable 5.1"
+        - "Anthropic: Claude Haiku 5.5"
+        - "Google: Gemini 4 Argon"
+        - "Google: Gemini 3.1 Pro"
+        - "Google: Gemini 3 Flash"
+        - "OpenAI: GPT-5.5"
+        - "OpenAI: GPT-6.1"
+        - "OpenAI: GPT-6 Astra"
+        - "Local Procedural (No API Key)"
+    validations:
+      required: true
+  - type: dropdown
+    id: soundfont
+    attributes:
+      label: SoundFont & Audio Status
+      description: Was FluidSynth and the SoundFont verified on your system?
+      options:
+        - "Verified (/usr/share/soundfonts/FluidR3_GM.sf2)"
+        - "Custom SF2 Path"
+        - "SoundFont Not Installed"
+        - "FFmpeg Error"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information
+      description: Operating system, Python version, Node.js version, browser.
+      value: |
+        - OS: Linux / macOS / Windows
+        - Python Version: (.venv/bin/python --version)
+        - Node Version: (node -v)
+        - Browser: Chrome / Firefox / Safari / Edge
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic Logs / Output
+      description: Terminal logs or Activity Stream payload (ensure API keys are redacted).
+      render: shell
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I confirm that all API keys and credentials have been redacted.
+          required: true
+        - label: I confirm this issue does not contain emojis per project policy.
+          required: true
+        - label: I acknowledge this library generates MIDI arrangements and lead sheets, not synthetic vocal audio.
+          required: true

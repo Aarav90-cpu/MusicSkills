@@ -1,0 +1,43 @@
+name: Feature Request
+description: Propose a new feature, DAW export integration, or audio enhancement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggest an idea or improvement for MusicSkills.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: What would you like MusicSkills to do?
+      placeholder: Describe the desired capability clearly...
+    validations:
+      required: true
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem or Motivation
+      description: Is your feature request related to a specific workflow problem or DAW integration?
+      placeholder: I am frustrated when...
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution or Implementation
+      description: Describe your proposed technical design or API interface.
+      placeholder: Add support for exporting individual MIDI stems or custom tempo automation...
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you considered.
+  - type: checkboxes
+    id: checkboxes
+    attributes:
+      label: Guidelines Verification
+      options:
+        - label: I have verified this submission adheres to the zero-emoji policy.
+          required: true
+        - label: I have reviewed existing issues to ensure this request is not a duplicate.
+          required: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Community Discussions
+    url: https://github.com/Aarav90-cpu/MusicSkills/discussions
+    about: Ask questions, share generated songs, or discuss musical arrangements.
+  - name: Security Vulnerability Reporting
+    url: https://github.com/Aarav90-cpu/MusicSkills/security/advisories/new
+    about: Privately report a security vulnerability.

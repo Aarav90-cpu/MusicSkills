@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { openGitHubIssueReport } from '../utils/githubReporting';
 
 export const ActivityPanel: React.FC = () => {
-  const { activityEvents, clearActivityEvents, isActivityOpen, setIsActivityOpen } = useApp();
+  const { activityEvents, clearActivityEvents, isActivityOpen, setIsActivityOpen, systemStatus } = useApp();
   const [filter, setFilter] = useState<'all' | 'tools' | 'errors'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -182,27 +183,81 @@ export const ActivityPanel: React.FC = () => {
                     )}
                   </div>
                 )}
+                {ev.status === 'error' && (
+                  <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
+                    <button
+                      className="btn btn-outlined"
+                      onClick={() =>
+                        openGitHubIssueReport(ev.stage, {
+                          component: 'Activity Stream',
+                          action: 'Runtime Operation',
+                          customDetails: ev.details,
+                          soundfontStatus: systemStatus?.soundfontExists,
+                        })
+                      }
+                      style={{
+                        height: '24px',
+                        fontSize: '11px',
+                        padding: '0 10px',
+                        borderColor: 'var(--color-error)',
+                        color: 'var(--color-error)',
+                      }}
+                    >
+                      <span className="material-icons-round" style={{ fontSize: '13px' }}>bug_report</span>
+                      Auto-Report on GitHub
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
         )}
       </div>
 
-      {/* Footer Stats */}
+      {/* Footer Stats & Diagnostics */}
       <div
         style={{
           padding: '12px 16px',
           borderTop: '1px solid var(--color-outline)',
           backgroundColor: 'var(--color-container)',
           display: 'flex',
-          justifyContent: 'space-between',
-          fontSize: '11px',
-          color: 'var(--color-text-secondary)',
-          fontFamily: 'var(--font-mono)',
+          flexDirection: 'column',
+          gap: '8px',
         }}
       >
-        <span>Engine: Active</span>
-        <span>Local Execution: Yes</span>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: '11px',
+            color: 'var(--color-text-secondary)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          <span>Engine: Active</span>
+          <span>Local Execution: Yes</span>
+        </div>
+
+        <button
+          className="btn btn-outlined"
+          onClick={() =>
+            openGitHubIssueReport('Manual Diagnostic Log Export', {
+              component: 'Activity Panel',
+              action: 'Diagnostic Dump',
+              soundfontStatus: systemStatus?.soundfontExists,
+              customDetails: activityEvents.map(e => `[${e.timestamp}] ${e.status.toUpperCase()}: ${e.stage} ${e.details || ''}`).join('\n'),
+            })
+          }
+          style={{
+            height: '28px',
+            fontSize: '11px',
+            width: '100%',
+            gap: '6px',
+          }}
+        >
+          <span className="material-icons-round" style={{ fontSize: '14px' }}>terminal</span>
+          Auto-Report Diagnostics to GitHub
+        </button>
       </div>
     </aside>
   );

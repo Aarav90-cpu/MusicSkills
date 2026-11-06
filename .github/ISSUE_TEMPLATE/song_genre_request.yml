@@ -1,0 +1,51 @@
+name: Music Genre or Style Proposal
+description: Request a new musical genre, regional style, modal scale, or drum pattern
+title: "[Genre Request]: "
+labels: ["genre-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Propose a new genre, regional tradition, or subgenre to expand the MusicSkills dimensional composition matrix.
+  - type: input
+    id: genre-name
+    attributes:
+      label: Genre / Style Name
+      placeholder: e.g. Afrobeat, Bossa Nova, Synthwave, Celtic Folk
+    validations:
+      required: true
+  - type: textarea
+    id: musical-characteristics
+    attributes:
+      label: Musical Characteristics & Theory
+      description: Describe typical tempo (BPM), scale/modes, key signatures, and rhythmic traits.
+      placeholder: |
+        - Typical Tempo Range: 100-115 BPM
+        - Primary Scale: Dorian or Mixolydian
+        - Common Time Signature: 4/4 with polyrhythmic percussion
+        - Harmonic Movement: ii-V-I or modal vamp
+    validations:
+      required: true
+  - type: textarea
+    id: instrumentation
+    attributes:
+      label: Characteristic Instrumentation
+      description: General MIDI instrument programs and percussion mappings.
+      placeholder: |
+        - Harmony: Electric Piano, Clean Stratocaster
+        - Bass: Fingered Bass with octave syncopation
+        - Drums: Shekere, Congas, rimshots, tight snare
+    validations:
+      required: true
+  - type: textarea
+    id: reference-tracks
+    attributes:
+      label: Reference Tracks or Artists
+      description: Notable songs or producers illustrating this style.
+  - type: checkboxes
+    id: guidelines
+    attributes:
+      label: Verification
+      options:
+        - label: I confirm this proposal follows the zero-emoji standard.
+          required: true
