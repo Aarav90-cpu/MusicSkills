@@ -19,6 +19,26 @@ def main():
     cfg = HumanizeConfig(timing_jitter_min=-6, timing_jitter_max=6, velocity_variance=14)
     humanizer = Humanizer(config=cfg, seed=42)
 
+    # Original lyrics crafted by the AI for this Drift Phonk track
+    phonk_lyrics = {
+        "Verse 1": [
+            "Tires burning on the asphalt, smoking in the rain",
+            "Midnight engine revving, drowning out the pain",
+            "Red lights flashing in the rearview, blur inside the glass",
+            "Press the pedal to the floorboard, tearing through the pass",
+        ],
+        "Pre-Chorus": [
+            "Grip the wheel, feel the static crawl",
+            "Shadows climbing up the concrete wall",
+        ],
+        "Chorus 1": [
+            "We are drifting through the midnight haze!",
+            "Living fast inside a crimson blaze!",
+            "Never stop until the pistons break!",
+            "Leaving thunder in the drifter's wake!",
+        ],
+    }
+
     gen = SongGenerator(
         topic="Midnight Drifter",
         genre="phonk",
@@ -26,6 +46,7 @@ def main():
         purpose="workout music",
         root_key="D",
         tempo_bpm=136,
+        lyrics=phonk_lyrics,
         humanizer=humanizer,
         seed=42,
     )

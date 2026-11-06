@@ -196,17 +196,49 @@ When a user asks for a song, execute the following procedure:
    - Purpose (e.g., Workout, Storytelling, Dance, Party)
    - Musical Key & Tempo (or use genre defaults)
 
-2. **Generate Musical Arrangement & Synchronized Vocal Sheet**:
-   - Run the generator CLI tool:
-     ```bash
-     .venv/bin/python -m scripts.cli --topic "YOUR_TOPIC" --genre "GENRE" --mood "MOOD" --purpose "PURPOSE" --key "KEY" --bpm TEMPO
-     ```
-   - Alternatively, write a custom Python script utilizing `scripts.song_generator.SongGenerator` and `scripts.humanizer.Humanizer`.
+2. **The AI Writes the Original Lyrics**:
+   - You (Claude, Gemini, or ChatGPT) actively write the song lyrics using your language intelligence, adhering to the structure outlined in [references/song_structure_guide.md](file:///home/aarav/MusicSkills/references/song_structure_guide.md) and stylistic conventions in [references/genres_and_styles.md](file:///home/aarav/MusicSkills/references/genres_and_styles.md).
+   - Write distinct sections: `Verse 1`, `Pre-Chorus`, `Chorus 1`, `Verse 2`, `Chorus 2`, `Bridge`, `Chorus 3 (Climax)`, and `Outro`.
+   - Ensure the syllable count is rhythmic and singable.
 
-3. **Present the Results to the User**:
-   - Provide the complete lyrical sheet with exact `[MM:SS.mmm]` singing timestamps and performance notes.
-   - Provide instructions on how to play the generated `.mid` file using `.venv/bin/mido-play <file.mid>` or any Digital Audio Workstation (DAW) like Ableton, FL Studio, Logic, or GarageBand.
-   - Remind the user of the disclaimer that the file contains the musical accompaniment and vocal pitch guides for them to sing along with.
+3. **Generate Musical Arrangement & Synchronize Vocal Sheet**:
+   - Pass your written lyrics into `SongGenerator` in Python:
+     ```python
+     from scripts.song_generator import SongGenerator
+
+     # Lyrics written dynamically by the AI agent:
+     ai_lyrics = {
+         "Verse 1": [
+             "First original line written by the AI",
+             "Second line continuing the story",
+         ],
+         "Chorus 1": [
+             "Anthemic chorus hook line",
+             "Second line of the chorus",
+         ],
+     }
+
+     generator = SongGenerator(
+         topic="YOUR_TOPIC",
+         genre="GENRE",
+         mood="MOOD",
+         purpose="PURPOSE",
+         lyrics=ai_lyrics,  # Custom lyrics supplied by the AI!
+     )
+     outputs = generator.generate_song(output_dir="outputs", base_name="my_song")
+     ```
+   - Or pass via the CLI using `--lyrics-text` or `--lyrics-file`:
+     ```bash
+     .venv/bin/python -m scripts.cli \
+       --topic "YOUR_TOPIC" \
+       --genre "GENRE" \
+       --lyrics-file "lyrics.txt"
+     ```
+
+4. **Present the Results to the User**:
+   - Display the complete singer's lead sheet with exact `[MM:SS.mmm]` vocal entrance cues, pitch guides, and dynamic markings.
+   - Explain how to listen to the backing arrangement via `.venv/bin/mido-play <file.mid>` or any DAW (Ableton, FL Studio, Logic, Reaper).
+   - Reiterate the disclaimer that the MIDI contains the backing track and vocal pitch guide for human singers or vocal synths.
 
 ---
 

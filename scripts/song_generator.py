@@ -191,6 +191,38 @@ GENRE_PROFILES: Dict[str, GenreProfile] = {
 }
 
 
+def parse_lyrics_text(text: str) -> Dict[str, List[str]]:
+    """
+    Parses a plain-text lyric string with [Section Name] headers into a dictionary
+    usable by SongGenerator.
+
+    Example input:
+        [Verse 1]
+        First line written by Claude or Gemini
+        Second line of the verse
+
+        [Chorus 1]
+        The big anthemic chorus line
+    """
+    sections: Dict[str, List[str]] = {}
+    current_section = "Verse 1"
+
+    for line in text.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            current_section = line[1:-1].strip()
+            if current_section not in sections:
+                sections[current_section] = []
+        else:
+            if current_section not in sections:
+                sections[current_section] = []
+            sections[current_section].append(line)
+
+    return sections
+
+
 class SongGenerator:
     """
     Main generative music system combining arrangement, humanization,
@@ -199,12 +231,13 @@ class SongGenerator:
 
     def __init__(
         self,
-        topic: str = "Journey to the Stars",
+        topic: str = "Untitled Song",
         genre: str = "pop",
         mood: str = "energetic",
         purpose: str = "workout music",
         root_key: str = "C",
         tempo_bpm: Optional[int] = None,
+        lyrics: Optional[Dict[str, List[Any]]] = None,
         humanizer: Optional[Humanizer] = None,
         seed: Optional[int] = None,
     ):
@@ -216,6 +249,7 @@ class SongGenerator:
         self.root_key = root_key.upper()
         self.root_midi = 60 + NOTE_NAMES.get(self.root_key, 0)  # Middle C = 60
         self.bpm = tempo_bpm or self.profile.default_bpm
+        self.raw_lyrics = lyrics
         self.humanizer = humanizer or Humanizer(seed=seed)
         self.rng = random.Random(seed)
         self.ticks_per_beat = 480
@@ -240,61 +274,103 @@ class SongGenerator:
             ("Outro", "outro", 4, "low"),
         ]
 
-    def _craft_lyrics_for_topic(self) -> Dict[str, List[Dict[str, Any]]]:
+    def _normalize_lyrics(self, raw_lyrics: Optional[Dict[str, List[Any]]]) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Crafts rhythmic, singable lyrics directly thematic to the given topic, mood, and purpose.
-        Returns lines with text, beat offset, duration, and pitch recommendations.
-        """
-        t = self.topic.title()
-        m = self.mood
-        p = self.purpose
+        Dynamically formats custom lyrics written by the AI agent (Claude, Gemini, ChatGPT).
+        Accepts either plain lyric strings or structured line dictionaries per section.
 
-        return {
-            "Verse 1": [
-                {"text": f"Footsteps echoing, the morning turns the key", "offset": 0.0, "dur": 3.5, "pitch": "C4-D4-E4", "dyn": "mf", "note": "Clear, observational narrative"},
-                {"text": f"Thinking 'bout {t}, everything we're meant to be", "offset": 4.0, "dur": 3.5, "pitch": "E4-F4-G4", "dyn": "mf", "note": "Lean into the lyric"},
-                {"text": f"The shadows fade away against the burning neon sign", "offset": 8.0, "dur": 3.5, "pitch": "C4-D4-E4", "dyn": "mf", "note": "Even breath, sustained tone"},
-                {"text": f"We're crossing over boundaries, stepping past the line", "offset": 12.0, "dur": 3.5, "pitch": "E4-G4-A4", "dyn": "f", "note": "Push energy upward"},
-            ],
-            "Pre-Chorus": [
-                {"text": f"Feel the pulse begin to rise", "offset": 0.0, "dur": 3.2, "pitch": "A4-G4-F4", "dyn": "f", "note": "Crisp staccato buildup"},
-                {"text": f"There's no turning back tonight, open up your eyes", "offset": 4.0, "dur": 3.5, "pitch": "G4-A4-B4", "dyn": "f", "note": "Full chest voice climb"},
-            ],
-            "Chorus 1": [
-                {"text": f"This is our time, living for {t}!", "offset": 0.0, "dur": 3.5, "pitch": "C5-B4-A4-G4", "dyn": "ff", "note": "Anthemic, explosive vocal hook"},
-                {"text": f"Nothing can hold us down, we break the atmospheric blue", "offset": 4.0, "dur": 3.5, "pitch": "E4-G4-A4-C5", "dyn": "ff", "note": "Hold long sustain"},
-                {"text": f"Feel the thunder roll, a fire in the heart", "offset": 8.0, "dur": 3.5, "pitch": "D5-C5-B4-A4", "dyn": "ff", "note": "Passionate vibrato"},
-                {"text": f"We wrote the future before the journey could start", "offset": 12.0, "dur": 3.5, "pitch": "G4-A4-C5", "dyn": "f", "note": "Triumphant resolution"},
-            ],
-            "Verse 2": [
-                {"text": f"Every highway stretched across the endless silver rain", "offset": 0.0, "dur": 3.5, "pitch": "C4-D4-E4", "dyn": "mf", "note": "Intimate, reflective delivery"},
-                {"text": f"We paid the price in gold to rise above the quiet pain", "offset": 4.0, "dur": 3.5, "pitch": "E4-F4-G4", "dyn": "mf", "note": "Build tension smoothly"},
-                {"text": f"Now the horizon bends to greet the promise we made", "offset": 8.0, "dur": 3.5, "pitch": "C4-D4-E4", "dyn": "mf", "note": "Confident phrasing"},
-                {"text": f"A testament of iron that will never, ever fade", "offset": 12.0, "dur": 3.5, "pitch": "E4-G4-A4", "dyn": "f", "note": "Strong conviction"},
-            ],
-            "Chorus 2": [
-                {"text": f"This is our time, living for {t}!", "offset": 0.0, "dur": 3.5, "pitch": "C5-B4-A4-G4", "dyn": "ff", "note": "Full anthemic hook"},
-                {"text": f"Nothing can hold us down, we break the atmospheric blue", "offset": 4.0, "dur": 3.5, "pitch": "E4-G4-A4-C5", "dyn": "ff", "note": "Power vocal sustain"},
-                {"text": f"Feel the thunder roll, a fire in the heart", "offset": 8.0, "dur": 3.5, "pitch": "D5-C5-B4-A4", "dyn": "ff", "note": "Rhythmic punch"},
-                {"text": f"We wrote the future before the journey could start", "offset": 12.0, "dur": 3.5, "pitch": "G4-A4-C5", "dyn": "f", "note": "Ring out with confidence"},
-            ],
-            "Bridge": [
-                {"text": f"When the noise clears out, what remains behind?", "offset": 0.0, "dur": 3.5, "pitch": "A4-E4-F4", "dyn": "p", "note": "Airy, vulnerable falsetto or head voice"},
-                {"text": f"A spark of silver light inside the dreaming mind", "offset": 4.0, "dur": 3.5, "pitch": "G4-D4-E4", "dyn": "mp", "note": "Gradual crescendo"},
-                {"text": f"It calls our names across the darkness and the cold", "offset": 8.0, "dur": 3.5, "pitch": "F4-A4-C5", "dyn": "mf", "note": "Expanding warmth"},
-                {"text": f"Watch as the greatest story finally unfolds!", "offset": 12.0, "dur": 3.5, "pitch": "G4-B4-D5", "dyn": "ff", "note": "High power belt into climax"},
-            ],
-            "Chorus 3 (Climax)": [
-                {"text": f"This is our time, living for {t}!", "offset": 0.0, "dur": 3.5, "pitch": "C5-B4-A4-G4", "dyn": "fff", "note": "Maximum power, ad-lib run"},
-                {"text": f"We shook the ground, we made the impossible true", "offset": 4.0, "dur": 3.5, "pitch": "E4-G4-A4-C5", "dyn": "fff", "note": "Full belt with vocal vibrato"},
-                {"text": f"Feel the thunder roll, shining in the light", "offset": 8.0, "dur": 3.5, "pitch": "D5-C5-B4-A4", "dyn": "ff", "note": "Soulful expression"},
-                {"text": f"We reign forever in the victory tonight!", "offset": 12.0, "dur": 3.5, "pitch": "G4-A4-C5", "dyn": "ff", "note": "Triumphant ending hold"},
-            ],
-            "Outro": [
-                {"text": f"Living for {t}...", "offset": 0.0, "dur": 3.0, "pitch": "E4-D4-C4", "dyn": "p", "note": "Gentle decrescendo, whisper fade"},
-                {"text": f"Until the stars come home...", "offset": 4.0, "dur": 3.5, "pitch": "D4-C4", "dyn": "pp", "note": "Final resonant breath"},
-            ],
-        }
+        Automatically:
+        1. Spaces lines evenly across each section's musical bars.
+        2. Leaves natural breathing windows between sung phrases.
+        3. Assigns pitch guide recommendations according to the song's musical scale.
+        4. Applies dynamic vocal markings (p, mf, f, ff) aligned with section energy levels.
+
+        If no lyrics are provided, returns an empty dict (producing a pure instrumental arrangement).
+        """
+        if not raw_lyrics:
+            return {}
+
+        normalized: Dict[str, List[Dict[str, Any]]] = {}
+        scale = SCALES.get(self.profile.scale_type, SCALES["minor"])
+        sections_spec = self._build_sections()
+        section_energy_map = {name: energy for name, _, _, energy in sections_spec}
+        section_bars_map = {name: nbars for name, _, nbars, _ in sections_spec}
+
+        # Pitch name lookup helper
+        pitch_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+        for sec_name, raw_lines in raw_lyrics.items():
+            if not raw_lines:
+                continue
+
+            # Case-insensitive and flexible section matching
+            canonical_name = sec_name
+            sec_lower = sec_name.lower().strip()
+            for known_name in section_energy_map.keys():
+                k_lower = known_name.lower()
+                if sec_lower == k_lower or sec_lower in k_lower or k_lower in sec_lower:
+                    canonical_name = known_name
+                    break
+
+            energy = section_energy_map.get(canonical_name, "medium")
+            nbars = section_bars_map.get(canonical_name, 8)
+            total_beats = nbars * 4.0
+            num_lines = len(raw_lines)
+            spacing_beats = total_beats / max(1, num_lines)
+
+            dyn_map = {"low": "p", "medium": "mf", "high": "f", "climax": "ff"}
+            default_dyn = dyn_map.get(energy, "mf")
+
+            norm_lines = []
+            for i, line_item in enumerate(raw_lines):
+                if isinstance(line_item, str):
+                    text = line_item.strip()
+                    offset = i * spacing_beats
+                    # Duration leaves breathing room before the next phrase
+                    dur = min(spacing_beats - 0.5, 3.5)
+                    dur = max(1.5, dur)
+
+                    # Dynamic pitch guide based on scale intervals
+                    d1 = scale[(i * 2) % len(scale)]
+                    d2 = scale[(i * 2 + 1) % len(scale)]
+                    d3 = scale[(i * 2 + 2) % len(scale)]
+                    octave = 5 if energy in ("high", "climax") else 4
+                    p1 = f"{pitch_names[(NOTE_NAMES.get(self.root_key, 0) + d1) % 12]}{octave}"
+                    p2 = f"{pitch_names[(NOTE_NAMES.get(self.root_key, 0) + d2) % 12]}{octave}"
+                    p3 = f"{pitch_names[(NOTE_NAMES.get(self.root_key, 0) + d3) % 12]}{octave}"
+                    pitch_str = f"{p1}-{p2}-{p3}"
+
+                    style_note = "Conversational narrative" if energy == "medium" else (
+                        "Anthemic power belt" if energy in ("high", "climax") else "Airy intimate tone"
+                    )
+
+                    norm_lines.append({
+                        "text": text,
+                        "offset": offset,
+                        "dur": dur,
+                        "pitch": pitch_str,
+                        "dyn": default_dyn,
+                        "note": style_note,
+                    })
+                elif isinstance(line_item, dict):
+                    text = line_item.get("text", "")
+                    offset = line_item.get("offset", i * spacing_beats)
+                    dur = line_item.get("dur", min(spacing_beats - 0.5, 3.5))
+                    pitch = line_item.get("pitch")
+                    dyn = line_item.get("dyn", default_dyn)
+                    note = line_item.get("note", "Expressive delivery")
+                    norm_lines.append({
+                        "text": text,
+                        "offset": offset,
+                        "dur": dur,
+                        "pitch": pitch,
+                        "dyn": dyn,
+                        "note": note,
+                    })
+
+            normalized[canonical_name] = norm_lines
+
+        return normalized
 
     def generate_song(self, output_dir: str = "outputs", base_name: str = "song") -> Dict[str, str]:
         """
@@ -305,7 +381,7 @@ class SongGenerator:
         """
         os.makedirs(output_dir, exist_ok=True)
         sections_spec = self._build_sections()
-        lyrics_data = self._craft_lyrics_for_topic()
+        lyrics_data = self._normalize_lyrics(self.raw_lyrics)
 
         current_bar = 0
         built_sections: List[SongSection] = []

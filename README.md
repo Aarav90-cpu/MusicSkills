@@ -76,7 +76,9 @@ Generate a complete song arrangement with lyrics and timestamps in a single comm
   --bpm 104
 ```
 
-### 2. Python API
+### 2. Python API (AI Writes Custom Lyrics)
+
+The AI model (Claude, Gemini, or ChatGPT) writes custom, original lyrics and passes them directly to the engine:
 
 ```python
 from scripts.humanizer import HumanizeConfig, Humanizer
@@ -90,7 +92,19 @@ cfg = HumanizeConfig(
 )
 humanizer = Humanizer(config=cfg)
 
-# 2. Initialize song generator
+# 2. Supply original lyrics written by the AI model:
+ai_lyrics = {
+    "Verse 1": [
+        "In the quiet of the morning when the rain begins to fall",
+        "I can hear the distant engine answer to the highway call",
+    ],
+    "Chorus 1": [
+        "We are running through the starlight, nothing left to lose",
+        "Breaking past the shadows and the midnight blues",
+    ],
+}
+
+# 3. Initialize song generator with AI-written lyrics
 generator = SongGenerator(
     topic="Voyage to the Deep",
     genre="electronic",
@@ -98,10 +112,11 @@ generator = SongGenerator(
     purpose="background music",
     root_key="F",
     tempo_bpm=124,
+    lyrics=ai_lyrics,  # Custom lyrics supplied by the AI!
     humanizer=humanizer,
 )
 
-# 3. Generate arrangement and vocal lead sheet
+# 4. Generate multi-track MIDI arrangement and vocal lead sheet
 outputs = generator.generate_song(output_dir="outputs", base_name="voyage_to_deep")
 
 print("Generated MIDI File:", outputs["midi"])

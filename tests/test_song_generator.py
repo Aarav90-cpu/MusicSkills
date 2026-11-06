@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 import mido
-from scripts.song_generator import GENRE_PROFILES, SongGenerator
+from scripts.song_generator import GENRE_PROFILES, SongGenerator, parse_lyrics_text
 
 
 class TestSongGenerator(unittest.TestCase):
@@ -64,6 +64,54 @@ class TestSongGenerator(unittest.TestCase):
             res = gen.generate_song(output_dir=self.test_dir, base_name=f"test_{g}")
             self.assertTrue(os.path.exists(res["midi"]))
             self.assertGreater(os.path.getsize(res["midi"]), 1000)
+
+    def test_generate_with_ai_written_lyrics(self):
+        """Verifies that custom lyrics written dynamically by an AI agent are accurately timed and exported."""
+        ai_lyrics = {
+            "Verse 1": [
+                "Drifting through the deep expanse of space",
+                "Searching for a quiet, sacred place",
+            ],
+            "Chorus 1": [
+                "We burn like supernovas in the night!",
+                "Carrying the beacon and the light!",
+            ],
+        }
+        gen = SongGenerator(
+            topic="Space Exploration",
+            genre="electronic",
+            mood="cinematic",
+            purpose="storytelling",
+            lyrics=ai_lyrics,
+            seed=42,
+        )
+        res = gen.generate_song(output_dir=self.test_dir, base_name="space_exploration")
+
+        # Verify custom lyrics appear verbatim in the lead sheet
+        with open(res["lead_sheet"], "r", encoding="utf-8") as f:
+            content = f.read()
+            self.assertIn("Drifting through the deep expanse of space", content)
+            self.assertIn("We burn like supernovas in the night!", content)
+
+        # Verify in LRC
+        with open(res["lrc"], "r", encoding="utf-8") as f:
+            lrc_content = f.read()
+            self.assertIn("Drifting through the deep expanse of space", lrc_content)
+
+    def test_parse_lyrics_text_helper(self):
+        """Verifies parsing of standard section header text format."""
+        raw_text = """
+        [Verse 1]
+        First line of verse
+        Second line of verse
+
+        [Chorus 1]
+        Anthemic hook line
+        """
+        parsed = parse_lyrics_text(raw_text)
+        self.assertEqual(len(parsed["Verse 1"]), 2)
+        self.assertEqual(parsed["Verse 1"][0], "First line of verse")
+        self.assertEqual(parsed["Chorus 1"][0], "Anthemic hook line")
 
 
 if __name__ == "__main__":

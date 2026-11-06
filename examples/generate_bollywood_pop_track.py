@@ -18,6 +18,21 @@ def main():
     cfg = HumanizeConfig(timing_jitter_min=-5, timing_jitter_max=5, velocity_variance=10)
     humanizer = Humanizer(config=cfg, seed=777)
 
+    bollywood_lyrics = {
+        "Verse 1": [
+            "Rang barse subah se, the drum begins to play",
+            "Golden dust and laughter chasing every cloud away",
+            "Sitar strings are singing to the beat of every heart",
+            "This is where the celebration and the journey start",
+        ],
+        "Chorus 1": [
+            "Dance into the colors, let the spirit rise!",
+            "Catch the spark of joy reflected in a thousand eyes!",
+            "Dholak rolls like thunder underneath the open sky!",
+            "Lift your hands and let the banner of the festival fly!",
+        ],
+    }
+
     gen = SongGenerator(
         topic="Festival of Colors",
         genre="indian",
@@ -25,6 +40,7 @@ def main():
         purpose="festival music",
         root_key="C",
         tempo_bpm=102,
+        lyrics=bollywood_lyrics,
         humanizer=humanizer,
         seed=777,
     )

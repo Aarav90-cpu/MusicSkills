@@ -4,11 +4,12 @@ Generate complete songs with humanized MIDI arrangements and synchronized lyrica
 """
 
 import argparse
+import json
 import os
 import sys
 
 from scripts.humanizer import HumanizeConfig, Humanizer
-from scripts.song_generator import GENRE_PROFILES, SongGenerator
+from scripts.song_generator import GENRE_PROFILES, SongGenerator, parse_lyrics_text
 
 
 def main() -> int:
@@ -77,6 +78,25 @@ def main() -> int:
         help="Directory to save generated song assets (default: outputs)",
     )
     parser.add_argument(
+        "--lyrics-file",
+        "-l",
+        type=str,
+        default=None,
+        help="Path to file containing AI-written lyrics (.json or .txt format with [Section] headers)",
+    )
+    parser.add_argument(
+        "--lyrics-text",
+        type=str,
+        default=None,
+        help="Raw string containing AI-written lyrics with [Section Name] headers",
+    )
+    parser.add_argument(
+        "--lyrics-json",
+        type=str,
+        default=None,
+        help="JSON string mapping sections to lyric lines, e.g. '{\"Verse 1\": [\"line 1\", \"line 2\"]}'",
+    )
+    parser.add_argument(
         "--name",
         "-n",
         type=str,
@@ -111,6 +131,23 @@ def main() -> int:
     # Clean characters
     base_name = "".join(c for c in base_name if c.isalnum() or c in ("_", "-"))
 
+    # Parse custom AI-written lyrics if supplied
+    ai_lyrics = None
+    if args.lyrics_file:
+        if not os.path.exists(args.lyrics_file):
+            print(f"Error: Lyrics file not found: {args.lyrics_file}", file=sys.stderr)
+            return 1
+        with open(args.lyrics_file, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if args.lyrics_file.endswith(".json") or content.startswith("{"):
+                ai_lyrics = json.loads(content)
+            else:
+                ai_lyrics = parse_lyrics_text(content)
+    elif args.lyrics_json:
+        ai_lyrics = json.loads(args.lyrics_json)
+    elif args.lyrics_text:
+        ai_lyrics = parse_lyrics_text(args.lyrics_text)
+
     cfg = HumanizeConfig(
         timing_jitter_min=-abs(args.jitter),
         timing_jitter_max=abs(args.jitter),
@@ -125,12 +162,15 @@ def main() -> int:
         purpose=args.purpose,
         root_key=args.key,
         tempo_bpm=args.bpm,
+        lyrics=ai_lyrics,
         humanizer=humanizer,
     )
 
+    lyrics_status = "Custom AI-written lyrics loaded" if ai_lyrics else "Instrumental arrangement (No lyrics provided)"
     print(f"\n🎵 Generating arrangement for: '{args.topic}'")
     print(f"   Genre: {generator.profile.name} | Mood: {generator.mood.capitalize()} | Purpose: {generator.purpose.capitalize()}")
     print(f"   Tempo: {generator.bpm} BPM | Key: {generator.root_key} {generator.profile.scale_type}")
+    print(f"   Vocal Track: {lyrics_status}")
     print(f"   Humanization: +/-{args.jitter} ticks jitter, +/-{args.velocity_variance} velocity dynamic swing")
 
     results = generator.generate_song(output_dir=args.output_dir, base_name=base_name)
