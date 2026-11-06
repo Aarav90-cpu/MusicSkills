@@ -12,13 +12,13 @@ export function getAIModel(overrideProvider?: string, overrideKey?: string, over
 
   if (provider === 'anthropic') {
     const anthropic = createAnthropic({ apiKey });
-    return anthropic(modelName || 'claude-3-7-sonnet-20250219');
+    return anthropic(modelName || 'claude-sonnet-5-5');
   } else if (provider === 'openai') {
     const openai = createOpenAI({ apiKey });
-    return openai(modelName || 'gpt-4o');
+    return openai(modelName || 'gpt-5.5');
   } else if (provider === 'google') {
     const google = createGoogleGenerativeAI({ apiKey });
-    return google(modelName || 'gemini-2.0-flash');
+    return google(modelName || 'gemini-4-argon');
   }
   throw new Error(`Unsupported AI provider: ${provider}`);
 }

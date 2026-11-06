@@ -82,3 +82,4 @@ export interface PlayerTrack {
   lyrics: Record<string, string[]>;
   bpm: number;
 }
+

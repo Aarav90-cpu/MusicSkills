@@ -488,19 +488,20 @@ export const VocalStudioPage: React.FC = () => {
           }}
         >
           <div
+            key={countInBeat}
+            className="animate-pop-in"
             style={{
-              fontSize: '120px',
+              fontSize: '130px',
               fontWeight: 900,
               color: countInBeat === 1 ? 'var(--color-accent-amber)' : 'var(--color-primary)',
               fontFamily: 'JetBrains Mono, monospace',
-              transform: 'scale(1.1)',
-              transition: 'all 0.15s ease-out',
+              filter: `drop-shadow(0 0 32px ${countInBeat === 1 ? 'rgba(255, 176, 32, 0.7)' : 'rgba(183, 166, 255, 0.7)'})`,
             }}
           >
             {countInBeat}
           </div>
-          <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-high)', marginTop: '16px' }}>
-            Get ready to sing...
+          <div className="animate-pop-in" style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-high)', marginTop: '16px', letterSpacing: '0.05em' }}>
+            Get ready to sing... (Beat {5 - countInBeat} of 4)
           </div>
         </div>
       )}
@@ -705,21 +706,34 @@ export const VocalStudioPage: React.FC = () => {
                     >
                       {secName}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {Array.isArray(lines) &&
-                        lines.map((line, lIdx) => (
-                          <div
-                            key={lIdx}
-                            style={{
-                              fontSize: '15px',
-                              lineHeight: 1.6,
-                              color: 'var(--color-text-high)',
-                              fontFamily: 'Outfit, sans-serif',
-                            }}
-                          >
-                            {line}
-                          </div>
-                        ))}
+                        lines.map((line, lIdx) => {
+                          const totalLines = lyricsEntries.reduce((acc, [, ls]) => acc + (ls?.length || 0), 0);
+                          const lineDur = (selectedVersion?.durationSec || 180) / Math.max(1, totalLines);
+                          const globalIdx = lyricsEntries.slice(0, sIdx).reduce((acc, [, ls]) => acc + (ls?.length || 0), 0) + lIdx;
+                          const isLineSinging = (isRecording || teleprompterPlaying) && teleprompterTime >= globalIdx * lineDur && teleprompterTime < (globalIdx + 1) * lineDur;
+
+                          return (
+                            <div
+                              key={lIdx}
+                              className={`animate-lyric-reveal ${isLineSinging ? 'animate-karaoke-active' : ''}`}
+                              style={{
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '15px',
+                                lineHeight: 1.6,
+                                color: isLineSinging ? '#ffffff' : 'var(--color-text-high)',
+                                backgroundColor: isLineSinging ? 'rgba(183, 166, 255, 0.18)' : 'transparent',
+                                borderLeft: isLineSinging ? '3px solid var(--color-primary)' : '3px solid transparent',
+                                fontFamily: 'Outfit, sans-serif',
+                                transition: 'all 0.25s cubic-bezier(0.2, 0, 0, 1)',
+                              }}
+                            >
+                              {line}
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
                 ))
@@ -1176,3 +1190,4 @@ export const VocalStudioPage: React.FC = () => {
     </div>
   );
 };
+

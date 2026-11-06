@@ -15,7 +15,7 @@ export const SettingsPage: React.FC = () => {
 
   // Settings State
   const [provider, setProvider] = useState<'anthropic' | 'google' | 'openai'>('anthropic');
-  const [model, setModel] = useState<string>('claude-3-5-sonnet-20241022');
+  const [model, setModel] = useState<string>('claude-sonnet-5-5');
   const [apiKey, setApiKey] = useState<string>('');
   const [showKey, setShowKey] = useState<boolean>(false);
   const [creativity, setCreativity] = useState<number>(0.7);
@@ -58,27 +58,33 @@ export const SettingsPage: React.FC = () => {
     loadConfig();
   }, []);
 
-  // Update models based on provider
+  // Update models based on provider with 2026 frontier architectures
   const getModelOptions = (p: string) => {
     switch (p) {
       case 'anthropic':
         return [
-          { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Recommended for MusicSkills)' },
-          { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Advanced Reasoning)' },
-          { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (Rich Poetics)' },
-          { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Rapid Generation)' },
+          { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5 (Premier Intelligence & Speed - BenchLM 81.9)' },
+          { id: 'claude-opus-5-5', name: 'Claude Opus 5.5 (Top Flagship Agentic Coding - BenchLM 86.4)' },
+          { id: 'claude-fable-5-1', name: 'Claude Fable 5.1 (Demanding Long-Horizon Reasoning - BenchLM 81.2)' },
+          { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5 (Low-Latency High-Volume Routing)' },
+          { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet (Hybrid Thinking)' },
+          { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Legacy Stable)' },
         ];
       case 'google':
         return [
-          { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Extensive Context)' },
-          { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Ultra Fast)' },
-          { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+          { id: 'gemini-4-argon', name: 'Gemini 4 Argon (Flagship Heavy Multimodal & Reasoning)' },
+          { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (Deep Research & Coding Specialist)' },
+          { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (High-Speed Rapid Response)' },
+          { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Fast Multimodal)' },
+          { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Massive Context)' },
         ];
       case 'openai':
         return [
-          { id: 'gpt-4o', name: 'GPT-4o (Multimodal Flagship)' },
-          { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-          { id: 'o1-preview', name: 'o1 Preview (Deep Reasoning)' },
+          { id: 'gpt-5.5', name: 'GPT-5.5 (Premier All-Rounder Flagship, Complex Logic)' },
+          { id: 'gpt-6.1', name: 'GPT-6.1 (Next-Gen Real-Time Reasoning & Execution)' },
+          { id: 'gpt-6-astra', name: 'GPT-6 Astra (Frontier Autonomous Agentic Execution)' },
+          { id: 'gpt-4o', name: 'GPT-4o (Multimodal Standard)' },
+          { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Compact Fast)' },
         ];
       default:
         return [];
@@ -649,3 +655,4 @@ export const SettingsPage: React.FC = () => {
     </div>
   );
 };
+

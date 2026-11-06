@@ -35,3 +35,4 @@ export const App: React.FC = () => {
 
   return <AppShell>{renderCurrentPage()}</AppShell>;
 };
+

@@ -182,3 +182,4 @@ export function deleteChat(id: string): boolean {
   fs.rmSync(result.dirPath, { recursive: true, force: true });
   return true;
 }
+

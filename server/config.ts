@@ -18,7 +18,7 @@ const CONFIG_FILE = path.resolve(process.cwd(), '.config.json');
 
 const DEFAULT_CONFIG: AppConfig = {
   provider: 'anthropic',
-  model: 'claude-3-7-sonnet-20250219',
+  model: 'claude-sonnet-5-5',
   apiKey: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || '',
   creativity: 0.7,
   humanization: 'natural',
@@ -57,3 +57,4 @@ export function maskKey(key: string): string {
   if (key.length <= 8) return '••••' + key.slice(-2);
   return '••••••••' + key.slice(-4);
 }
+

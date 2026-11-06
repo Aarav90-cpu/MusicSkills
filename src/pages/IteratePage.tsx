@@ -259,6 +259,7 @@ export const IteratePage: React.FC = () => {
               activeChat.messages.map((msg) => (
                 <div
                   key={msg.id}
+                  className="animate-pop-in"
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -312,6 +313,53 @@ export const IteratePage: React.FC = () => {
                 <p style={{ fontSize: '13px' }}>
                   No iteration prompts yet. Use the suggestion chips below or type a custom request to collaborate on this song.
                 </p>
+              </div>
+            )}
+
+            {/* AI BOT RESPONDING ANIMATION */}
+            {isSending && (
+              <div
+                className="animate-pop-in"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  alignSelf: 'flex-start',
+                  maxWidth: '85%',
+                  padding: '12px 18px',
+                  borderRadius: '16px 16px 16px 2px',
+                  backgroundColor: 'var(--color-surface-container)',
+                  border: '1px solid var(--color-primary)',
+                  boxShadow: '0 4px 16px rgba(107, 78, 255, 0.2)',
+                }}
+              >
+                <div
+                  className="animate-orb-pulse"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'var(--gradient-signature)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span className="material-icons-round" style={{ fontSize: '16px', color: '#ffffff' }}>
+                    auto_awesome
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-high)' }}>
+                    AI Producer Responding...
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <div className="typing-dot-1" style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'var(--color-primary)' }} />
+                    <div className="typing-dot-2" style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#FF4FA3' }} />
+                    <div className="typing-dot-3" style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'var(--color-accent-amber, #FFB020)' }} />
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -721,3 +769,4 @@ export const IteratePage: React.FC = () => {
     </div>
   );
 };
+

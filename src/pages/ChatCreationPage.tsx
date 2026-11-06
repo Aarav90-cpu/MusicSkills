@@ -9,6 +9,8 @@ export const ChatCreationPage: React.FC = () => {
     activeChatId,
     refreshChats,
     playTrack,
+    currentTime,
+    isPlaying,
     setRoute,
     showSnackbar,
     addActivityEvent,
@@ -36,6 +38,7 @@ export const ChatCreationPage: React.FC = () => {
   const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
   const [chatPrompt, setChatPrompt] = useState('');
   const [activeSectionScroll, setActiveSectionScroll] = useState<string | null>(null);
+  const [recentEditedSection, setRecentEditedSection] = useState<string | null>(null);
 
   // --- STEP 4: GENERATION PROGRESS STATE ---
   const [genStage, setGenStage] = useState(0);
@@ -227,6 +230,8 @@ export const ChatCreationPage: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setLyrics(data.lyrics);
+        setRecentEditedSection('ALL');
+        setTimeout(() => setRecentEditedSection(null), 1200);
         await persistChatChanges({ lyrics: data.lyrics });
         addActivityEvent({
           stage: `Lyrics successfully generated with section timestamps`,
@@ -769,17 +774,67 @@ export const ChatCreationPage: React.FC = () => {
           {/* Section Lyrics Cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {isGeneratingLyrics ? (
-              <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
-                <span className="material-icons-round pulse-ring" style={{ fontSize: '36px', color: 'var(--color-primary)', marginBottom: '12px' }}>
-                  auto_awesome
-                </span>
-                <div style={{ fontWeight: 600 }}>AI is composing lyrics for {topic}...</div>
+              <div
+                className="card card-specular animate-pop-in"
+                style={{
+                  padding: '48px 32px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  background: 'linear-gradient(180deg, rgba(31, 29, 41, 0.95) 0%, rgba(22, 21, 29, 0.98) 100%)',
+                  border: '1px solid var(--color-primary)',
+                  boxShadow: '0 16px 48px rgba(107, 78, 255, 0.28)',
+                }}
+              >
+                {/* Holographic Glowing AI Orb */}
+                <div
+                  className="animate-orb-pulse"
+                  style={{
+                    width: '68px',
+                    height: '68px',
+                    borderRadius: '50%',
+                    background: 'var(--gradient-signature)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '20px',
+                  }}
+                >
+                  <span className="material-icons-round" style={{ fontSize: '32px', color: '#ffffff' }}>
+                    auto_awesome
+                  </span>
+                </div>
+
+                {/* Animated Equalizer Rhythmic Visualizer */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '5px', height: '34px', marginBottom: '18px' }}>
+                  <div className="eq-bar-1" style={{ width: '5px', background: 'var(--color-primary)', borderRadius: '3px' }} />
+                  <div className="eq-bar-2" style={{ width: '5px', background: 'var(--color-warning, #FFB020)', borderRadius: '3px' }} />
+                  <div className="eq-bar-3" style={{ width: '5px', background: '#FF4FA3', borderRadius: '3px' }} />
+                  <div className="eq-bar-4" style={{ width: '5px', background: 'var(--color-primary)', borderRadius: '3px' }} />
+                  <div className="eq-bar-2" style={{ width: '5px', background: '#3CC4B2', borderRadius: '3px' }} />
+                  <div className="eq-bar-1" style={{ width: '5px', background: '#8E9BFF', borderRadius: '3px' }} />
+                </div>
+
+                <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-text)', marginBottom: '8px', letterSpacing: '-0.01em' }}>
+                  AI Co-Writer Composing Lyrics & Phrasing
+                </div>
+                <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', maxWidth: '440px', lineHeight: 1.5, marginBottom: '18px' }}>
+                  Structuring melodic hook lines, internal rhymes, and emotional contour for <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>"{topic || 'Your Song'}"</span>.
+                </div>
+
+                {/* Sleek typing bounce dots */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div className="typing-dot-1" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--color-primary)' }} />
+                  <div className="typing-dot-2" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#FF4FA3' }} />
+                  <div className="typing-dot-3" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--color-warning, #FFB020)' }} />
+                </div>
               </div>
             ) : (
               Object.entries(lyrics).map(([secName, lines]) => (
                 <div
                   key={secName}
-                  className="card"
+                  className={`card card-specular animate-pop-in ${recentEditedSection === 'ALL' || recentEditedSection === secName ? 'animate-text-pulse' : ''}`}
                   style={{
                     padding: '20px 24px',
                     borderLeft: `4px solid ${
@@ -791,6 +846,7 @@ export const ChatCreationPage: React.FC = () => {
                         ? 'var(--section-bridge)'
                         : 'var(--color-primary)'
                     }`,
+                    transition: 'all 0.3s cubic-bezier(0.2, 0, 0, 1)',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -802,7 +858,16 @@ export const ChatCreationPage: React.FC = () => {
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {lines.map((line, lIdx) => (
-                      <div key={lIdx} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div
+                        key={lIdx}
+                        className="animate-lyric-reveal"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          animationDelay: `${lIdx * 60}ms`,
+                        }}
+                      >
                         <span className="mono" style={{ fontSize: '11px', color: 'var(--color-text-secondary)', minWidth: '24px' }}>
                           0{lIdx + 1}
                         </span>
@@ -1140,43 +1205,67 @@ export const ChatCreationPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Synced Karaoke Lyrics Panel */}
-          <div className="card" style={{ padding: '28px', maxHeight: '540px', overflowY: 'auto' }}>
-            <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="material-icons-round" style={{ color: 'var(--color-primary)' }}>lyrics</span>
-              <span>Singing Teleprompter</span>
+          {/* Right Column: Synced Karaoke Lyrics Panel with Live Waveform Animation */}
+          <div className="card card-specular animate-pop-in" style={{ padding: '28px', maxHeight: '540px', overflowY: 'auto' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="material-icons-round" style={{ color: 'var(--color-primary)' }}>lyrics</span>
+                <span>Live Singing Teleprompter</span>
+              </div>
+              {isPlaying && (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '16px' }}>
+                  <div className="eq-bar-1" style={{ width: '3px', background: 'var(--color-primary)', borderRadius: '2px' }} />
+                  <div className="eq-bar-2" style={{ width: '3px', background: '#FF4FA3', borderRadius: '2px' }} />
+                  <div className="eq-bar-3" style={{ width: '3px', background: 'var(--color-warning, #FFB020)', borderRadius: '2px' }} />
+                  <div className="eq-bar-4" style={{ width: '3px', background: '#3CC4B2', borderRadius: '2px' }} />
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {Object.entries(lyrics).map(([sec, lines]) => (
-                <div key={sec}>
+              {Object.entries(lyrics).map(([sec, lines], sIdx) => (
+                <div key={sec} className="animate-pop-in" style={{ animationDelay: `${sIdx * 80}ms` }}>
                   <div
                     style={{
                       fontSize: '11px',
                       fontWeight: 800,
                       color: 'var(--color-primary)',
                       textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
+                      letterSpacing: '0.08em',
                       marginBottom: '8px',
                     }}
                   >
                     {sec}
                   </div>
-                  {lines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        backgroundColor: 'var(--color-container)',
-                        marginBottom: '6px',
-                        fontSize: '14px',
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {line}
-                    </div>
-                  ))}
+                  {lines.map((line, idx) => {
+                    // Estimate active line based on playback time
+                    const totalSecLines = Object.values(lyrics).reduce((acc, l) => acc + l.length, 0);
+                    const lineDuration = (latestVersion?.durationSec || 180) / Math.max(1, totalSecLines);
+                    const globalLineIdx = Object.values(lyrics).slice(0, sIdx).reduce((acc, l) => acc + l.length, 0) + idx;
+                    const isLineActive = isPlaying && currentTime >= globalLineIdx * lineDuration && currentTime < (globalLineIdx + 1) * lineDuration;
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`animate-lyric-reveal ${isLineActive ? 'animate-karaoke-active' : ''}`}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          backgroundColor: isLineActive ? 'rgba(183, 166, 255, 0.16)' : 'var(--color-container)',
+                          borderLeft: isLineActive ? '3px solid var(--color-primary)' : '3px solid transparent',
+                          marginBottom: '8px',
+                          fontSize: '14px',
+                          fontWeight: isLineActive ? 600 : 400,
+                          color: isLineActive ? '#FFFFFF' : 'var(--color-text)',
+                          lineHeight: 1.5,
+                          animationDelay: `${idx * 40}ms`,
+                          transition: 'all 0.25s cubic-bezier(0.2, 0, 0, 1)',
+                        }}
+                      >
+                        {line}
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -1186,3 +1275,4 @@ export const ChatCreationPage: React.FC = () => {
     </div>
   );
 };
+

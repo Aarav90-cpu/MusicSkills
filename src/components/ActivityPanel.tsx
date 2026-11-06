@@ -207,3 +207,4 @@ export const ActivityPanel: React.FC = () => {
     </aside>
   );
 };
+

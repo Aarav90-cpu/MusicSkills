@@ -11,15 +11,34 @@ export const SetupPage: React.FC = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Default models per provider
-  const modelsByProvider: Record<string, string[]> = {
-    anthropic: ['claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
-    openai: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
-    google: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+  // Models per provider with 2026 flagship architectures
+  const modelsByProvider: Record<string, { id: string; label: string; desc: string }[]> = {
+    anthropic: [
+      { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', desc: 'Premier intelligence & rapid speed (BenchLM 81.9)' },
+      { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', desc: 'Flagship agentic coding & deep knowledge (BenchLM 86.4)' },
+      { id: 'claude-fable-5-1', label: 'Claude Fable 5.1', desc: 'Specialized long-horizon reasoning (BenchLM 81.2)' },
+      { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', desc: 'Low-latency routing & high-volume extraction' },
+      { id: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet', desc: 'Hybrid thinking & reasoning' },
+      { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', desc: 'Legacy production stable' },
+    ],
+    openai: [
+      { id: 'gpt-5.5', label: 'GPT-5.5', desc: 'Premier all-rounder flagship, complex logic' },
+      { id: 'gpt-6.1', label: 'GPT-6.1', desc: 'Next-gen frontier real-time execution & reasoning' },
+      { id: 'gpt-6-astra', label: 'GPT-6 Astra', desc: 'Frontier autonomous agentic reasoning' },
+      { id: 'gpt-4o', label: 'GPT-4o', desc: 'Multimodal standard model' },
+      { id: 'gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Fast, lightweight tasks' },
+    ],
+    google: [
+      { id: 'gemini-4-argon', label: 'Gemini 4 Argon', desc: 'Flagship heavy multimodal reasoning powerhouse' },
+      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', desc: 'Balanced high-tier performer, deep research' },
+      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', desc: 'High-speed response tier, rapid execution' },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', desc: 'Fast multimodal generation' },
+      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', desc: 'Massive context window' },
+    ],
   };
 
   useEffect(() => {
-    setModel(modelsByProvider[provider][0]);
+    setModel(modelsByProvider[provider][0].id);
     setTestResult(null);
   }, [provider]);
 
@@ -82,7 +101,7 @@ export const SetupPage: React.FC = () => {
       }}
     >
       <div
-        className="card"
+        className="card card-specular animate-pop-in"
         style={{
           width: '100%',
           maxWidth: '480px',
@@ -139,7 +158,9 @@ export const SetupPage: React.FC = () => {
               style={{ cursor: 'pointer' }}
             >
               {modelsByProvider[provider].map(m => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m.id} value={m.id}>
+                  {m.label} - {m.desc}
+                </option>
               ))}
             </select>
           </div>
@@ -263,3 +284,4 @@ export const SetupPage: React.FC = () => {
     </div>
   );
 };
+

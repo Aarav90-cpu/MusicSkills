@@ -307,7 +307,7 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-/* ANIMATIONS */
+/* ANIMATIONS & MICRO-INTERACTIONS */
 @keyframes pulse-ring {
   0% { transform: scale(0.95); opacity: 0.8; }
   50% { transform: scale(1.15); opacity: 0.3; }
@@ -326,3 +326,198 @@ h1, h2, h3, h4, h5, h6 {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* SPRING POP IN & POP OUT */
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.02) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes popOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.90) translateY(8px);
+  }
+}
+
+.animate-pop-in {
+  animation: popIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pop-out {
+  animation: popOut 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* LYRIC LINE REVEAL ANIMATION */
+@keyframes lyricReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+    filter: blur(6px);
+  }
+  70% {
+    opacity: 0.95;
+    transform: translateY(-1px) scale(1.008);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-lyric-reveal {
+  animation: lyricReveal 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* TEXT CHANGE & REGENERATION PULSE */
+@keyframes textChangePulse {
+  0% {
+    transform: scale(0.96);
+    filter: brightness(1.7);
+    text-shadow: 0 0 20px rgba(183, 166, 255, 0.8), 0 0 35px rgba(255, 79, 163, 0.4);
+    background-color: rgba(183, 166, 255, 0.15);
+  }
+  50% {
+    transform: scale(1.025);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+    text-shadow: none;
+    background-color: transparent;
+  }
+}
+
+.animate-text-pulse {
+  animation: textChangePulse 0.65s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* HOLOGRAPHIC AI PRODUCER ORB PULSE */
+@keyframes orbGlowPulse {
+  0% {
+    transform: scale(1) rotate(0deg);
+    box-shadow: 0 0 24px rgba(107, 78, 255, 0.5), 0 0 48px rgba(255, 79, 163, 0.3);
+  }
+  50% {
+    transform: scale(1.12) rotate(180deg);
+    box-shadow: 0 0 36px rgba(107, 78, 255, 0.75), 0 0 72px rgba(255, 176, 32, 0.5);
+  }
+  100% {
+    transform: scale(1) rotate(360deg);
+    box-shadow: 0 0 24px rgba(107, 78, 255, 0.5), 0 0 48px rgba(255, 79, 163, 0.3);
+  }
+}
+
+.animate-orb-pulse {
+  animation: orbGlowPulse 4s infinite ease-in-out;
+}
+
+/* AI TYPING DOTS WAVE */
+@keyframes typingDot {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-8px);
+    opacity: 1;
+    filter: drop-shadow(0 0 6px var(--color-primary));
+  }
+}
+
+.typing-dot-1 {
+  animation: typingDot 1.4s infinite ease-in-out;
+  animation-delay: 0s;
+}
+.typing-dot-2 {
+  animation: typingDot 1.4s infinite ease-in-out;
+  animation-delay: 0.2s;
+}
+.typing-dot-3 {
+  animation: typingDot 1.4s infinite ease-in-out;
+  animation-delay: 0.4s;
+}
+
+/* EQUALIZER RHYTHMIC BARS */
+@keyframes barBounce1 {
+  0%, 100% { height: 6px; }
+  50% { height: 26px; }
+}
+@keyframes barBounce2 {
+  0%, 100% { height: 18px; }
+  50% { height: 8px; }
+}
+@keyframes barBounce3 {
+  0%, 100% { height: 10px; }
+  50% { height: 32px; }
+}
+@keyframes barBounce4 {
+  0%, 100% { height: 24px; }
+  50% { height: 12px; }
+}
+
+.eq-bar-1 { animation: barBounce1 0.7s infinite ease-in-out; }
+.eq-bar-2 { animation: barBounce2 0.85s infinite ease-in-out; }
+.eq-bar-3 { animation: barBounce3 0.65s infinite ease-in-out; }
+.eq-bar-4 { animation: barBounce4 0.9s infinite ease-in-out; }
+
+/* ACTIVE KARAOKE SINGING LINE HIGHLIGHT */
+@keyframes karaokeGlow {
+  0% {
+    box-shadow: 0 0 15px rgba(255, 176, 32, 0.2), inset 0 0 12px rgba(255, 79, 163, 0.1);
+    border-left-color: #FFB020;
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(183, 166, 255, 0.4), inset 0 0 18px rgba(107, 78, 255, 0.2);
+    border-left-color: #B7A6FF;
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(255, 176, 32, 0.2), inset 0 0 12px rgba(255, 79, 163, 0.1);
+    border-left-color: #FFB020;
+  }
+}
+
+.animate-karaoke-active {
+  animation: karaokeGlow 2.5s infinite ease-in-out;
+  transform: scale(1.015);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* SPECULAR SHINE HOVER */
+.card-specular {
+  position: relative;
+  overflow: hidden;
+}
+.card-specular::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 70%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  transform: skewX(-25deg);
+  transition: left 0.75s ease;
+  pointer-events: none;
+}
+.card-specular:hover::before {
+  left: 150%;
+}
+
+
