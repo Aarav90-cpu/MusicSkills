@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { loadConfig, saveConfig, maskKey } from './config';
-import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir } from './chats';
+import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap } from './chats';
 import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey } from './ai';
 import { renderSong, mixVocalTake } from './audio';
 
@@ -110,6 +110,103 @@ app.delete('/api/chats/:id', (req, res) => {
     return res.status(404).json({ error: 'Chat not found' });
   }
   res.json({ success: true, id: req.params.id });
+});
+
+// --- PROJECT EXPORT & IMPORT ROUTES ---
+
+app.get('/api/projects/:id/export', async (req, res) => {
+  try {
+    const { zipPath, filename } = await exportProjectZip(req.params.id as string);
+    res.download(zipPath, filename, (err) => {
+      try {
+        if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+      } catch (_) {}
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Export failed' });
+  }
+});
+
+app.post('/api/projects/import', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  const originalName = req.file.originalname || 'project.zip';
+  const tempPath = path.join('/tmp', `upload-${Date.now()}-${originalName}`);
+  fs.writeFileSync(tempPath, req.file.buffer);
+
+  try {
+    if (originalName.endsWith('.json')) {
+      const content = JSON.parse(req.file.buffer.toString('utf-8'));
+      const newChat = createChat(content.name || 'Imported Song', content.style);
+      newChat.lyrics = content.lyrics || {};
+      newChat.sections = content.sections || newChat.sections;
+      newChat.step = content.step || 'review';
+      saveChat(newChat);
+      return res.status(201).json({ success: true, chat: newChat });
+    } else {
+      const importedChat = await importProjectZip(tempPath);
+      return res.status(201).json({ success: true, chat: importedChat });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Import failed' });
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch (_) {}
+  }
+});
+
+app.post('/api/custom-song/import', upload.fields([{ name: 'audio', maxCount: 1 }, { name: 'lrc', maxCount: 1 }]), async (req, res) => {
+  const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+  const audioFile = files?.['audio']?.[0];
+  if (!audioFile) {
+    return res.status(400).json({ error: 'Audio file (.mp3, .wav) is required' });
+  }
+
+  const { title = 'Custom Track', artist = '', genre = 'pop', bpm = '120' } = req.body;
+  const lrcFile = files?.['lrc']?.[0];
+  const lrcContent = lrcFile ? lrcFile.buffer.toString('utf-8') : (req.body.lrcText || '');
+
+  try {
+    const newChat = await importCustomSong({
+      title,
+      artist,
+      genre,
+      bpm: parseInt(bpm) || 120,
+      audioBuffer: audioFile.buffer,
+      audioOriginalName: audioFile.originalname,
+      lrcContent,
+    });
+
+    res.status(201).json({ success: true, chat: newChat });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Custom song import failed' });
+  }
+});
+
+app.patch('/api/chats/:id/lyrics-sync', (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  const { lrcContent, lyrics } = req.body;
+  const { chat, dirPath } = result;
+
+  if (lrcContent) {
+    const lrcPath = path.join(dirPath, `${chat.folderName}_synced.lrc`);
+    fs.writeFileSync(lrcPath, lrcContent, 'utf-8');
+    if (chat.versions.length > 0) {
+      chat.versions[chat.versions.length - 1].leadSheetFile = `${chat.folderName}_synced.lrc`;
+    }
+  }
+
+  if (lyrics) {
+    chat.lyrics = lyrics;
+  }
+
+  saveChat(chat);
+  res.json({ success: true, chat });
 });
 
 // --- AI SONGWRITING & LYRICS ROUTES ---

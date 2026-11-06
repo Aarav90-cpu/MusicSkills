@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { loadConfig } from './config';
+
+const execFileAsync = promisify(execFile);
 
 export interface ChatSession {
   id: string;
@@ -181,5 +185,134 @@ export function deleteChat(id: string): boolean {
   if (!result) return false;
   fs.rmSync(result.dirPath, { recursive: true, force: true });
   return true;
+}
+
+export async function exportProjectZip(id: string): Promise<{ zipPath: string; filename: string }> {
+  const result = getChat(id);
+  if (!result) {
+    throw new Error(`Project with ID "${id}" not found`);
+  }
+  const { chat, dirPath } = result;
+  const safeName = sanitizeName(chat.name);
+  const zipFilename = `${safeName}-${chat.id}.musicskills.zip`;
+  const zipPath = path.join('/tmp', `export-${chat.id}-${Date.now()}.zip`);
+
+  await execFileAsync('/usr/bin/zip', ['-r', zipPath, '.'], { cwd: dirPath });
+  return { zipPath, filename: zipFilename };
+}
+
+export async function importProjectZip(zipFilePath: string): Promise<ChatSession> {
+  const chatsDir = getChatsDir();
+  const tempExtractDir = path.join('/tmp', `import-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`);
+  fs.mkdirSync(tempExtractDir, { recursive: true });
+
+  try {
+    await execFileAsync('/usr/bin/unzip', ['-o', zipFilePath, '-d', tempExtractDir]);
+
+    const metaPath = path.join(tempExtractDir, 'chat.json');
+    if (!fs.existsSync(metaPath)) {
+      throw new Error('Invalid MusicSkills project archive: missing chat.json');
+    }
+
+    const rawChat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
+    const newId = Math.random().toString(36).substring(2, 8);
+    const safeName = sanitizeName(rawChat.name || 'imported-project');
+    const newFolderName = `${safeName}-${newId}`;
+    const targetDir = path.join(chatsDir, newFolderName);
+
+    fs.cpSync(tempExtractDir, targetDir, { recursive: true });
+
+    rawChat.id = newId;
+    rawChat.folderName = newFolderName;
+    rawChat.updatedAt = new Date().toISOString();
+    fs.writeFileSync(path.join(targetDir, 'chat.json'), JSON.stringify(rawChat, null, 2), 'utf-8');
+
+    return rawChat;
+  } finally {
+    try {
+      fs.rmSync(tempExtractDir, { recursive: true, force: true });
+    } catch (_) {}
+  }
+}
+
+export function parseLrcToLyricsMap(lrcText: string): Record<string, string[]> {
+  const lines = lrcText.split('\n');
+  const sections: Record<string, string[]> = {};
+  let currentSection = 'Main Lyrics';
+  sections[currentSection] = [];
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+
+    const secMatch = trimmed.match(/^\[([A-Za-z0-9\s\-_]+)\]$/);
+    if (secMatch && !trimmed.match(/^\[\d{2}:\d{2}/)) {
+      currentSection = secMatch[1].trim();
+      if (!sections[currentSection]) sections[currentSection] = [];
+      continue;
+    }
+
+    const cleanLine = trimmed.replace(/^(\[\d{2}:\d{2}(?:\.\d{2,3})?\])+/, '').trim();
+    if (cleanLine) {
+      if (!sections[currentSection]) sections[currentSection] = [];
+      sections[currentSection].push(cleanLine);
+    }
+  }
+
+  return Object.keys(sections).length > 0 ? sections : { 'Main Lyrics': ['[Instrumental / Synced audio track]'] };
+}
+
+export async function importCustomSong(params: {
+  title: string;
+  artist?: string;
+  genre?: string;
+  bpm?: number;
+  audioBuffer: Buffer;
+  audioOriginalName: string;
+  lrcContent?: string;
+}): Promise<ChatSession> {
+  const { title, artist, genre = 'pop', bpm = 120, audioBuffer, audioOriginalName, lrcContent } = params;
+  const newChat = createChat(title, {
+    topic: title,
+    description: artist ? `Custom import by ${artist}` : 'Custom song import',
+    genre,
+    bpm,
+  });
+
+  const chatDirResult = getChat(newChat.id);
+  if (!chatDirResult) throw new Error('Failed to retrieve newly created chat directory');
+  const { dirPath } = chatDirResult;
+
+  const ext = path.extname(audioOriginalName) || '.mp3';
+  const audioFileName = `v1_custom${ext}`;
+  fs.writeFileSync(path.join(dirPath, audioFileName), audioBuffer);
+
+  let lrcFileName = '';
+  let lyricsMap: Record<string, string[]> = {};
+
+  if (lrcContent && lrcContent.trim()) {
+    lrcFileName = 'v1_custom.lrc';
+    fs.writeFileSync(path.join(dirPath, lrcFileName), lrcContent, 'utf-8');
+    lyricsMap = parseLrcToLyricsMap(lrcContent);
+  } else {
+    lyricsMap = { 'Lyrics': ['[Ready for lyrics synchronization]'] };
+  }
+
+  newChat.lyrics = lyricsMap;
+  newChat.step = 'result';
+  newChat.versions.push({
+    version: 'v1',
+    createdAt: new Date().toISOString(),
+    bpm,
+    key: 'C',
+    midiFile: '',
+    mp3File: audioFileName,
+    leadSheetFile: lrcFileName,
+    durationSec: 180,
+    notes: 'Imported custom audio and synced lyrics',
+  });
+
+  saveChat(newChat);
+  return newChat;
 }
 

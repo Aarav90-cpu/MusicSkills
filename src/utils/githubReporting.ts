@@ -19,7 +19,7 @@ export function generateGitHubIssueUrl(
   errorOrTitle: Error | string,
   context?: DiagnosticContext
 ): string {
-  const repoUrl = 'https://github.com/aarav/MusicSkills';
+  const repoUrl = 'https://github.com/Aarav90-cpu/MusicSkills';
   const errorMessage = typeof errorOrTitle === 'string' ? errorOrTitle : errorOrTitle.message;
   const errorStack = errorOrTitle instanceof Error ? errorOrTitle.stack : undefined;
 
@@ -62,3 +62,4 @@ export function openGitHubIssueReport(
   const url = generateGitHubIssueUrl(errorOrTitle, context);
   window.open(url, '_blank', 'noopener,noreferrer');
 }
+

@@ -48,3 +48,4 @@ MusicSkills is designed from the ground up as a **local-first application**:
 ## Zero-Emoji Standard
 
 In accordance with project-wide guidelines, all security communications, advisories, and documentation strictly adhere to the zero-emoji policy.
+

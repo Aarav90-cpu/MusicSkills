@@ -41,3 +41,4 @@ body:
           required: true
         - label: I have reviewed existing issues to ensure this request is not a duplicate.
           required: true
+

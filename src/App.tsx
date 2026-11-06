@@ -8,6 +8,7 @@ import { ChatCreationPage } from './pages/ChatCreationPage';
 import { VocalStudioPage } from './pages/VocalStudioPage';
 import { IteratePage } from './pages/IteratePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ScrollingLyricsPage } from './pages/ScrollingLyricsPage';
 
 export const App: React.FC = () => {
   const { route } = useApp();
@@ -26,6 +27,8 @@ export const App: React.FC = () => {
         return <VocalStudioPage />;
       case 'iterate':
         return <IteratePage />;
+      case 'lyrics':
+        return <ScrollingLyricsPage />;
       case 'settings':
         return <SettingsPage />;
       default:

@@ -116,3 +116,4 @@ To add a new genre (e.g., Synthwave or Afrobeat):
    ```
 4. **Commit with Conventional Commits** (e.g., `feat: add afrobeat genre profile`, `fix: correct srt timestamp boundary`).
 5. **Submit your Pull Request** referencing the relevant issue number and completing the PR template checklist.
+

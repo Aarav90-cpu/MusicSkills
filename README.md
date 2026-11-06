@@ -251,23 +251,63 @@ Visit `http://localhost:3000` in your browser.
 ### Key Studio Features
 
 1. **Dark Studio Mode Default**: Deep dark palette (`#0F0E15`) designed specifically for low-light DAW rooms and live performance booths.
-2. **5-Step Song Creation Wizard**:
+2. **2026 Frontier AI Model Integration**:
+   - **Anthropic (Claude)**: Claude Opus 5.5 (Flagship), Claude Sonnet 5.5 (Default Premier), Claude Fable 5.1, Claude Haiku 5.5.
+   - **OpenAI (GPT)**: GPT-5.5, GPT-6.1, GPT-6 Astra.
+   - **Google (Gemini)**: Gemini 4 Argon, Gemini 3.1 Pro Preview, Gemini 3 Flash Preview.
+3. **100% Guaranteed AI Lyrics Engine**:
+   - Multi-format resilient parser (normalizes markdown headers, asterisks, colons, bullets).
+   - Automatic retry with temperature backoff.
+   - Instant procedural offline fallbacks for all 10 genres (Pop, Hip-Hop, Rock, Electronic, Jazz, Classical, R&B, Country, Reggae, Metal) so lyric generation never fails even without network connectivity or API credentials.
+4. **Sanitized GitHub Auto-Reporting & Diagnostics**:
+   - One-click bug reporting with automatic credential redaction (strips Bearer tokens, OpenAI, Anthropic, and Gemini keys).
+   - Pre-fills environment specs (OS, Browser, Screen resolution, Model, Provider, SoundFont status).
+   - Integrated into the real-time Activity Panel and Settings Support Hub.
+5. **5-Step Song Creation Wizard**:
    - *Step 1 (Style)*: Topic, genre, mood, purpose, tempo (BPM), key/scale, and 7-section structure timeline.
-   - *Step 2 (Lyrics)*: Dynamic AI lyric authoring (Claude 3.5 Sonnet, Gemini 1.5/2.0, GPT-4o) with rhyme-scheme controls and live editing.
-   - *Step 3 (Review)*: Side-by-side verification of lyrics and section energy dynamics.
+   - *Step 2 (Lyrics)*: Dynamic AI lyric authoring with live rhyming controls, syllable estimation, and section editing.
+   - *Step 3 (Review)*: Side-by-side verification of lyrics, energy contours, and bar ranges.
    - *Step 4 (Generate)*: Humanized multi-track MIDI compilation and FluidSynth 192k MP3 synthesis.
-   - *Step 5 (Result)*: Karaoke lyrics player with real-time waveform visualization and download suite.
-3. **Live Vocal Recording Studio**:
+   - *Step 5 (Result)*: Karaoke lyrics player with real-time waveform visualization, vocal teleprompter, and download suite.
+6. **Live Vocal Recording Studio**:
    - Microphone hardware selector and live AudioContext RMS VU level meter.
    - 4-beat pulsing count-in metronome with audio ticks.
    - Synchronized scrolling teleprompter with pitch guide ribbons.
    - Multi-take recording reel (`take-1`, `take-2`, etc.) saved to `.chats/{name}-{id}/vocals/`.
    - Mixdown & mastering console: vocal level, backing level, studio reverb, and sync offset compensation.
-4. **Iterative Arrangement & A/B Testing**:
+7. **Iterative Arrangement & A/B Testing**:
    - Conversational AI co-writing chat dock for iterative arrangement prompts.
    - A/B instant auditioning deck: switch between versions on-the-fly to compare mixdowns.
-5. **Local-First & Private**:
+8. **Stage Scrolling Lyrics & Live Teleprompter**:
+   - Dedicated full-screen stage teleprompter view with line-by-line smooth vertical auto-centering.
+   - Active line highlighted with neon specular glow, dynamic energy badges, and text pop animations.
+   - Interactive click-to-seek playback jumping: click any lyric line to instantly scrub audio to that timestamp.
+   - Configurable font sizing (Normal, Large, Extra Large), auto-follow toggle, and timing offset calibration ($\pm 0.2\text{s}$).
+9. **Interactive Real-Time Lyrics Syncer**:
+   - Real-time line-by-line audio synchronization: tap the button or press **SPACEBAR** while listening to stamp timestamps.
+   - Precision timestamp nudging ($\pm 0.1\text{s}$ / $\pm 0.5\text{s}$) with live line previews.
+   - Export directly to standard synchronized `.lrc` (karaoke) and `.srt` (subtitles) or save back to the active project.
+10. **Custom Song Pairing & Project Import/Export**:
+   - Pair any external custom audio file (`.mp3`, `.wav`, `.ogg`, `.m4a`) with an `.lrc` file or raw lyrics for immediate scrolling playback.
+   - "Save as Library Project" option saves custom pairings into `.chats/` as first-class studio projects.
+   - Universal project import and export handling: download self-contained `.zip` archives containing all MIDI arrangements, rendered audio, lead sheets, vocal takes, and chat history.
+11. **Local-First & Private**:
    - All projects, audio takes, stems, and MIDI files are kept locally in `.chats/`.
+
+---
+
+## Community Governance & Issue Reporting
+
+MusicSkills strictly complies with a **Zero-Emoji Policy** across all code, documentation, and user interfaces.
+
+* **[Code of Conduct](CODE_OF_CONDUCT.md)**: Contributor Covenant v2.1 guidelines.
+* **[Contributing Guide](CONTRIBUTING.md)**: Development workflows, testing standards, and pull request procedures.
+* **[Security Policy](SECURITY.md)**: Vulnerability disclosure, local credential protection, and subprocess safety.
+* **[Issue Templates](.github/ISSUE_TEMPLATE/)**:
+  * [Bug Report](.github/ISSUE_TEMPLATE/bug_report.yml)
+  * [Feature Request](.github/ISSUE_TEMPLATE/feature_request.yml)
+  * [Song Genre Request](.github/ISSUE_TEMPLATE/song_genre_request.yml)
+  * [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ---
 

@@ -49,3 +49,4 @@ body:
       options:
         - label: I confirm this proposal follows the zero-emoji standard.
           required: true
+

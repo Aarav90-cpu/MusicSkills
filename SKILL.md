@@ -43,9 +43,10 @@ MusicSkills/
 │   ├── App.tsx                       # Primary studio router
 │   ├── main.tsx                      # Application mount
 │   ├── components/                   # Modular studio components (AppShell, PersistentPlayer, ActivityPanel, Waveform)
-│   ├── pages/                        # Studio views (Welcome, Setup, Home, ChatCreation, VocalStudio, Iterate, Settings)
+│   ├── pages/                        # Studio views (Welcome, Setup, Home, ChatCreation, VocalStudio, Iterate, ScrollingLyrics, Settings)
 │   ├── context/                      # Global AppContext (theme, audio player, activity events, chats)
 │   ├── styles/                       # Material 3 tokens & Dark Studio palette (--color-bg: #0F0E15)
+│   ├── utils/                        # Frontend utilities (lrcParser, githubReporting)
 │   └── types/                        # Complete TypeScript contracts
 ├── examples/                         # Ready-to-run demonstration scripts
 │   ├── __init__.py

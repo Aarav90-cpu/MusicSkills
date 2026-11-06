@@ -11,6 +11,7 @@ export const SettingsPage: React.FC = () => {
     checkStatus,
     refreshChats,
     chats,
+    activeChat,
     addActivityEvent,
   } = useApp();
 
@@ -646,10 +647,77 @@ export const SettingsPage: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
+              marginBottom: '16px',
             }}
           >
             <span className="material-icons-round" style={{ fontSize: '16px' }}>storage</span>
             Storage Directory: /home/aarav/MusicSkills/.chats/ ({chats.length} active projects)
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <label
+              className="btn btn-outlined"
+              style={{
+                height: '38px',
+                padding: '0 16px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              <span className="material-icons-round" style={{ fontSize: '18px' }}>file_upload</span>
+              Import Project (.zip / .json)
+              <input
+                type="file"
+                accept=".zip,.json"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  showSnackbar(`Importing project "${file.name}"...`);
+                  try {
+                    const res = await fetch('/api/projects/import', { method: 'POST', body: formData });
+                    if (res.ok) {
+                      const data = await res.json();
+                      await refreshChats();
+                      showSnackbar(`Imported "${data.chat.name}" successfully!`);
+                    } else {
+                      const err = await res.json();
+                      showSnackbar(`Import failed: ${err.error || 'Server error'}`);
+                    }
+                  } catch (err: any) {
+                    showSnackbar(`Error: ${err.message}`);
+                  }
+                  e.target.value = '';
+                }}
+                style={{ display: 'none' }}
+              />
+            </label>
+
+            {chats.length > 0 && (
+              <button
+                className="btn btn-tonal"
+                onClick={() => {
+                  const targetChat = activeChat || chats[0];
+                  window.open(`/api/projects/${targetChat.id}/export`, '_blank');
+                  showSnackbar(`Exporting project "${targetChat.name}" (.zip)...`);
+                }}
+                style={{
+                  height: '38px',
+                  padding: '0 16px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '13px',
+                }}
+              >
+                <span className="material-icons-round" style={{ fontSize: '18px' }}>archive</span>
+                Export Active Project ({activeChat?.name || chats[0].name})
+              </button>
+            )}
           </div>
         </div>
 
@@ -708,7 +776,7 @@ export const SettingsPage: React.FC = () => {
 
             <button
               onClick={() => {
-                window.open('https://github.com/aarav/MusicSkills/issues/new?template=feature_request.yml', '_blank', 'noopener,noreferrer');
+                window.open('https://github.com/Aarav90-cpu/MusicSkills/issues/new?template=feature_request.yml', '_blank', 'noopener,noreferrer');
               }}
               style={{
                 display: 'flex',

@@ -69,7 +69,7 @@ export const WelcomePage: React.FC = () => {
             How it works
           </a>
           <a
-            href="https://github.com/Arphd4/MusicSkills"
+            href="https://github.com/Aarav90-cpu/MusicSkills"
             target="_blank"
             rel="noreferrer"
             className="btn-text"
@@ -166,7 +166,7 @@ export const WelcomePage: React.FC = () => {
           </button>
 
           <a
-            href="https://github.com/Arphd4/MusicSkills"
+            href="https://github.com/Aarav90-cpu/MusicSkills"
             target="_blank"
             rel="noreferrer"
             className="btn btn-outlined"

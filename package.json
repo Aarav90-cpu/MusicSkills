@@ -2,6 +2,10 @@
   "name": "musicskills-studio",
   "version": "1.0.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Aarav90-cpu/MusicSkills.git"
+  },
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "vite build",

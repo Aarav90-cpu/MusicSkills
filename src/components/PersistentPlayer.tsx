@@ -287,6 +287,19 @@ export const PersistentPlayer: React.FC = () => {
           )}
         </div>
 
+        {/* Open Scrolling Lyrics */}
+        <button
+          className="btn-text"
+          onClick={() => {
+            setActiveChatId(currentTrack.chatId);
+            setRoute('lyrics');
+          }}
+          title="Open Scrolling Stage Lyrics"
+          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '50%' }}
+        >
+          <span className="material-icons-round">subtitles</span>
+        </button>
+
         {/* Expand to Result Page */}
         <button
           className="btn-text"

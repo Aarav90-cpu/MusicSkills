@@ -1166,8 +1166,8 @@ export const ChatCreationPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Three Action Buttons Requested by User */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            {/* Action Buttons */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               {/* Button 1: Do the Vocals */}
               <button
                 type="button"
@@ -1179,7 +1179,18 @@ export const ChatCreationPage: React.FC = () => {
                 <span>Do the Vocals (Open Vocal Studio)</span>
               </button>
 
-              {/* Button 2: Continue to Iterate */}
+              {/* Button 2: Stage Scrolling Lyrics */}
+              <button
+                type="button"
+                onClick={() => setRoute('lyrics')}
+                className="btn btn-tonal"
+                style={{ height: '48px', fontSize: '14px' }}
+              >
+                <span className="material-icons-round">subtitles</span>
+                <span>Stage Scrolling Lyrics & Syncer</span>
+              </button>
+
+              {/* Button 3: Continue to Iterate */}
               <button
                 type="button"
                 onClick={() => setRoute('iterate')}
@@ -1190,16 +1201,29 @@ export const ChatCreationPage: React.FC = () => {
                 <span>Continue to Iterate</span>
               </button>
 
-              {/* Button 3: Download Menu */}
+              {/* Button 4: Download MP3 */}
               {latestVersion && activeChatId && (
                 <a
                   href={`/api/chats/${activeChatId}/download/${latestVersion.mp3File}`}
                   download
                   className="btn btn-outlined"
-                  style={{ height: '48px', fontSize: '14px', textDecoration: 'none' }}
+                  style={{ height: '48px', fontSize: '14px', textDecoration: 'none', justifyContent: 'center' }}
                 >
                   <span className="material-icons-round">download</span>
                   <span>Download MP3</span>
+                </a>
+              )}
+
+              {/* Button 5: Export Project (.zip) */}
+              {activeChatId && (
+                <a
+                  href={`/api/projects/${activeChatId}/export`}
+                  download
+                  className="btn btn-outlined"
+                  style={{ height: '48px', fontSize: '14px', textDecoration: 'none', justifyContent: 'center' }}
+                >
+                  <span className="material-icons-round">archive</span>
+                  <span>Export Project (.zip)</span>
                 </a>
               )}
             </div>

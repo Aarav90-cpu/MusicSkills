@@ -7,6 +7,7 @@ export const HomePage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'genre'>('recent');
+  const [isImporting, setIsImporting] = useState<boolean>(false);
 
   const handleCreateNew = async () => {
     try {
@@ -23,6 +24,39 @@ export const HomePage: React.FC = () => {
       }
     } catch (e) {
       console.error('Error creating chat:', e);
+    }
+  };
+
+  const handleImportProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    showSnackbar(`Importing project package "${file.name}"...`);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/projects/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        await refreshChats();
+        setActiveChatId(data.chat.id);
+        showSnackbar(`Successfully imported project "${data.chat.name}"!`);
+      } else {
+        const err = await res.json();
+        showSnackbar(`Import failed: ${err.error || 'Server error'}`);
+      }
+    } catch (err: any) {
+      showSnackbar(`Import error: ${err.message}`);
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
     }
   };
 
@@ -87,9 +121,9 @@ export const HomePage: React.FC = () => {
           </p>
         </div>
 
-        {/* Search & Sort Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ position: 'relative', width: '240px' }}>
+        {/* Search, Sort & Import Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', width: '220px' }}>
             <span
               className="material-icons-round"
               style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', fontSize: '18px' }}
@@ -110,12 +144,55 @@ export const HomePage: React.FC = () => {
             className="input-field"
             value={sortBy}
             onChange={e => setSortBy(e.target.value as any)}
-            style={{ height: '40px', width: '130px', fontSize: '13px', cursor: 'pointer' }}
+            style={{ height: '40px', width: '120px', fontSize: '13px', cursor: 'pointer' }}
           >
             <option value="recent">Recent</option>
             <option value="name">A to Z</option>
             <option value="genre">Genre</option>
           </select>
+
+          {/* Import Project Button */}
+          <label
+            className="btn btn-outlined"
+            style={{
+              height: '40px',
+              padding: '0 14px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+            title="Import an existing .zip or .json project"
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>file_upload</span>
+            <span>{isImporting ? 'Importing...' : 'Import Project'}</span>
+            <input
+              type="file"
+              accept=".zip,.json"
+              onChange={handleImportProject}
+              disabled={isImporting}
+              style={{ display: 'none' }}
+            />
+          </label>
+
+          {/* Pair Custom MP3 + LRC Button */}
+          <button
+            onClick={() => setRoute('lyrics')}
+            className="btn btn-tonal"
+            style={{
+              height: '40px',
+              padding: '0 14px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+            }}
+            title="Open Scrolling Lyrics & Syncer with custom MP3 + LRC"
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>subtitles</span>
+            <span>Stage Lyrics & Syncer</span>
+          </button>
         </div>
       </div>
 
@@ -308,16 +385,63 @@ export const HomePage: React.FC = () => {
                   <div style={{ fontWeight: 700, fontSize: '16px', color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {chat.name}
                   </div>
-                  <button
-                    className="btn-text"
-                    onClick={e => handleDelete(e, chat)}
-                    title="Delete project"
-                    style={{ width: '28px', height: '28px', padding: 0 }}
-                  >
-                    <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-text-secondary)' }}>
-                      delete_outline
-                    </span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    {/* Open in Scrolling Lyrics */}
+                    <button
+                      className="btn-text"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setActiveChatId(chat.id);
+                        setRoute('lyrics');
+                        if (hasVersion && latestVersion) {
+                          playTrack({
+                            chatId: chat.id,
+                            songName: chat.name,
+                            version: latestVersion.version,
+                            mp3Url: `/api/audio/${chat.id}/${latestVersion.mp3File}`,
+                            midiUrl: `/api/audio/${chat.id}/${latestVersion.midiFile}`,
+                            durationSec: latestVersion.durationSec,
+                            lyrics: chat.lyrics,
+                            bpm: chat.style.bpm,
+                          });
+                        }
+                      }}
+                      title="Open in Scrolling Stage Lyrics"
+                      style={{ width: '28px', height: '28px', padding: 0 }}
+                    >
+                      <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
+                        subtitles
+                      </span>
+                    </button>
+
+                    {/* Export Full Project Zip */}
+                    <button
+                      className="btn-text"
+                      onClick={e => {
+                        e.stopPropagation();
+                        window.open(`/api/projects/${chat.id}/export`, '_blank');
+                        showSnackbar(`Exporting project "${chat.name}" (.zip)...`);
+                      }}
+                      title="Export full project (.zip)"
+                      style={{ width: '28px', height: '28px', padding: 0 }}
+                    >
+                      <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-text-secondary)' }}>
+                        archive
+                      </span>
+                    </button>
+
+                    {/* Delete Project */}
+                    <button
+                      className="btn-text"
+                      onClick={e => handleDelete(e, chat)}
+                      title="Delete project"
+                      style={{ width: '28px', height: '28px', padding: 0 }}
+                    >
+                      <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-text-secondary)' }}>
+                        delete_outline
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Style chips */}

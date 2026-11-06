@@ -179,6 +179,22 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </button>
 
           <button
+            className={`btn ${route === 'lyrics' ? 'btn-tonal' : 'btn-text'}`}
+            onClick={() => setRoute('lyrics')}
+            style={{
+              width: '100%',
+              height: '48px',
+              justifyContent: isDrawerCollapsed ? 'center' : 'flex-start',
+              padding: isDrawerCollapsed ? '0' : '0 16px',
+              backgroundColor: route === 'lyrics' ? 'var(--color-primary-container)' : 'transparent',
+              color: route === 'lyrics' ? 'var(--color-on-primary-container)' : 'var(--color-text)',
+            }}
+          >
+            <span className="material-icons-round">subtitles</span>
+            {!isDrawerCollapsed && <span>Stage Lyrics</span>}
+          </button>
+
+          <button
             className={`btn ${route === 'settings' ? 'btn-tonal' : 'btn-text'}`}
             onClick={() => setRoute('settings')}
             style={{

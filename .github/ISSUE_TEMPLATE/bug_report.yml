@@ -88,3 +88,4 @@ body:
           required: true
         - label: I acknowledge this library generates MIDI arrangements and lead sheets, not synthetic vocal audio.
           required: true
+
