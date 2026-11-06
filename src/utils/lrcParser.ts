@@ -250,3 +250,4 @@ export function exportToSRT(lines: SyncedLyricLine[]): string {
 
   return srtEntries.join('\n');
 }
+

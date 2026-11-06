@@ -32,8 +32,6 @@ export const SetupPage: React.FC = () => {
       { id: 'gemini-4-argon', label: 'Gemini 4 Argon', desc: 'Flagship heavy multimodal reasoning powerhouse' },
       { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', desc: 'Balanced high-tier performer, deep research' },
       { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', desc: 'High-speed response tier, rapid execution' },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', desc: 'Fast multimodal generation' },
-      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', desc: 'Massive context window' },
     ],
   };
 

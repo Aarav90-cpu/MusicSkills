@@ -5,48 +5,48 @@
  */
 
 :root {
-  /* DARK STUDIO MODE (DEFAULT & HIGHEST PRIORITY) */
-  --color-bg: #0F0E15;
-  --color-surface: #16151D;
-  --color-surface-tint: #1B1925;
-  --color-container: #1F1D29;
-  --color-container-high: #2A2737;
-  --color-outline: #2E2A3E;
-  --color-outline-variant: #3F3B52;
+  /* CLEAN MINIMAL DARK STUDIO MODE */
+  --color-bg: #09080E;
+  --color-surface: #111018;
+  --color-surface-tint: #161520;
+  --color-container: #171622;
+  --color-container-high: #1E1C2B;
+  --color-outline: rgba(255, 255, 255, 0.08);
+  --color-outline-variant: rgba(255, 255, 255, 0.14);
   
-  --color-text: #EDEAF7;
-  --color-text-secondary: #A6A0B8;
-  --color-text-tertiary: #757088;
+  --color-text: #F1F5F9;
+  --color-text-secondary: #94A3B8;
+  --color-text-tertiary: #64748B;
   
-  --color-primary: #B7A6FF;
-  --color-primary-container: #3A2D75;
-  --color-on-primary-container: #E7E0FF;
+  --color-primary: #7C4DFF;
+  --color-primary-container: rgba(124, 77, 255, 0.15);
+  --color-on-primary-container: #EDE7FF;
   
-  /* SIGNATURE GRADIENT (Generate, Play, Waveform, Hero) */
-  --gradient-signature: linear-gradient(120deg, #6B4EFF 0%, #FF4FA3 55%, #FFB020 100%);
-  --gradient-glow: 0 8px 32px rgba(107, 78, 255, 0.35);
+  /* REFINED MINIMAL STUDIO ACCENT GRADIENT */
+  --gradient-signature: linear-gradient(135deg, #6E44FF 0%, #9B51E0 100%);
+  --gradient-glow: 0 4px 20px rgba(110, 68, 255, 0.25);
 
   /* STATUS COLORS */
-  --color-success: #1FA971;
-  --color-success-container: rgba(31, 169, 113, 0.15);
-  --color-warning: #F2A100;
-  --color-warning-container: rgba(242, 161, 0, 0.15);
-  --color-error: #D93654;
-  --color-error-container: rgba(217, 54, 84, 0.15);
+  --color-success: #10B981;
+  --color-success-container: rgba(16, 185, 129, 0.12);
+  --color-warning: #F59E0B;
+  --color-warning-container: rgba(245, 158, 11, 0.12);
+  --color-error: #EF4444;
+  --color-error-container: rgba(239, 68, 68, 0.12);
 
   /* SONG SECTION COLORS */
-  --section-intro: #8E9BFF;
-  --section-verse: #3CC4B2;
-  --section-prechorus: #FFB020;
-  --section-chorus: #FF4FA3;
-  --section-bridge: #9B5CFF;
-  --section-break: #FF7A45;
-  --section-outro: #8A8FA3;
+  --section-intro: #818CF8;
+  --section-verse: #34D399;
+  --section-prechorus: #FBBF24;
+  --section-chorus: #F472B6;
+  --section-bridge: #A78BFA;
+  --section-break: #FB923C;
+  --section-outro: #94A3B8;
 
   /* ELEVATION (DARK) */
-  --shadow-l1: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-l2: 0 4px 14px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
-  --shadow-l3: 0 8px 28px rgba(107, 78, 255, 0.22), 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-l1: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-l2: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-l3: 0 8px 30px rgba(0, 0, 0, 0.5);
 
   /* TYPOGRAPHY */
   --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;

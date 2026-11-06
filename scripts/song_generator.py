@@ -5,6 +5,7 @@ into humanized multi-track Standard MIDI (.mid) arrangements and synchronized
 timestamped vocal lead sheets.
 """
 
+import argparse
 from dataclasses import dataclass
 import math
 import os
@@ -487,6 +488,8 @@ class SongGenerator:
             "srt": srt_path,
         }
 
+    generate = generate_song
+
     def _create_harmony_track(self, sections: List[SongSection]) -> MidiTrack:
         """Renders chord progressions with humanized timing, velocity, and voice leading."""
         track = MidiTrack()
@@ -558,11 +561,30 @@ class SongGenerator:
                 root_note = bass_root_octave + progression[chord_idx][0]
                 fifth_note = root_note + 7
 
-                # 8th note driving bassline (beats 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5)
-                sub_pattern = [root_note, root_note, root_note, fifth_note, root_note, root_note, fifth_note, root_note]
-                base_vel = 100 if sec.energy_level in ("high", "climax") else 82
+                # Dynamic Section-Aware Bassline
+                is_pre_chorus = sec.section_type == "pre-chorus"
+                is_drop = sec.section_type in ("chorus", "climax")
+                is_last_bar_of_buildup = is_pre_chorus and (bar == sec.num_bars - 1)
+
+                if is_last_bar_of_buildup:
+                    # Ascending Chromatic Walk-Up on beats 1-2, then Silence on beats 3-4 (Pre-Drop Breath)
+                    sub_pattern = [root_note, root_note + 2, root_note + 4, root_note + 5, None, None, None, None]
+                    base_vel = 110
+                elif is_drop and bar == 0:
+                    # Massive Sub-Bass Root Impact on Beat 1
+                    sub_pattern = [root_note - 12, root_note, root_note, fifth_note, root_note, root_note, fifth_note, root_note]
+                    base_vel = 115
+                else:
+                    # Standard 8th note driving bassline
+                    sub_pattern = [root_note, root_note, root_note, fifth_note, root_note, root_note, fifth_note, root_note]
+                    base_vel = 100 if sec.energy_level in ("high", "climax") else 82
 
                 for step_idx, note in enumerate(sub_pattern):
+                    if note is None:
+                        # Rest during pre-drop silence
+                        delta = self.humanizer.humanize_time(int(self.ticks_per_beat * 0.5))
+                        continue
+
                     beat_val = step_idx * 0.5
                     vel = self.humanizer.humanize_velocity(base_vel, beat_in_bar=beat_val, variance=10)
                     delta = self.humanizer.humanize_time(int(self.ticks_per_beat * 0.5))
@@ -659,6 +681,9 @@ class SongGenerator:
                         track.append(Message("note_off", channel=9, note=hihat, velocity=0, time=40))
                     continue
 
+                is_pre_chorus = sec.section_type == "pre-chorus"
+                is_last_buildup_bar = is_pre_chorus and (bar == sec.num_bars - 1)
+
                 # Standard beat pattern (4 beats per bar, 16th note resolution)
                 for step in range(16):
                     sub_beat = step / 4.0
@@ -666,50 +691,70 @@ class SongGenerator:
 
                     events_to_trigger = []
 
-                    # Kick pattern
-                    if style == "four_on_floor":
-                        if step % 4 == 0:  # Beats 1, 2, 3, 4
-                            events_to_trigger.append((kick, 108))
-                    elif style == "drift_phonk":
-                        if step in (0, 6, 8, 14):
-                            events_to_trigger.append((kick, 115))
-                        if step % 2 == 0:  # Phonk signature cowbell syncopation
-                            events_to_trigger.append((cowbell, 95))
-                    elif style == "boom_bap":
-                        if step in (0, 7, 10):
-                            events_to_trigger.append((kick, 102))
-                    elif style == "metal_blast":
-                        if step in (0, 2, 4, 6, 8, 10, 12, 14):  # Relentless double-bass kick
-                            events_to_trigger.append((kick, 118))
-                    elif style == "reggae_one_drop":
-                        if step == 8:  # Heavy kick on Beat 3 only
-                            events_to_trigger.append((kick, 105))
-                    elif style == "indian_fusion":
-                        if step in (0, 3, 6, 10):  # Syncopated fusion rhythm
-                            events_to_trigger.append((kick, 104))
-                    elif style == "jazz_swing":
-                        if step == 0:  # Soft feathered acoustic kick
-                            events_to_trigger.append((kick, 65))
-                    elif style == "country_train":
-                        if step in (0, 8):  # Driving bass notes
-                            events_to_trigger.append((kick, 98))
-                    else:  # Standard rock/pop backbeat
-                        if step in (0, 8):
-                            events_to_trigger.append((kick, 105))
+                    # 1. PRE-DROP GAP / SILENCE (Bar 4, Beats 3-4): Silence kick and snare before the drop
+                    if is_last_buildup_bar and step >= 8:
+                        if step == 15:
+                            # Final tom pickup on beat 4.75 leading into the drop
+                            events_to_trigger.append((GM_DRUMS.get("snare", 38), 115))
+                    elif is_pre_chorus:
+                        # 2. ACCELERATING CLIMB / RISER: Snare roll accelerates & velocity intensifies
+                        if bar >= 2:
+                            # 16th note continuous snare roll
+                            roll_vel = 72 + int((bar - 2) * 18 + (step / 16.0) * 24)
+                            events_to_trigger.append((snare, min(122, roll_vel)))
+                        elif bar == 1 and step % 2 == 0:
+                            # 8th note snare roll
+                            events_to_trigger.append((snare, 88))
+                        elif step in (4, 12):
+                            events_to_trigger.append((snare, 84))
 
-                    # Snare / Clap pattern
-                    if style == "reggae_one_drop":
-                        if step == 8:  # Rimshot/snare on Beat 3 alongside kick
-                            events_to_trigger.append((rimshot, 108))
-                    elif style == "jazz_swing":
-                        pass  # Jazz keeps time with ride & pedal hi-hat
-                    elif style == "country_train":
-                        # Fast train beat alternating accents
-                        train_vel = 100 if step in (4, 12) else 65
-                        events_to_trigger.append((snare, train_vel))
-                    elif step in (4, 12):  # Beats 2 and 4 backbeat
-                        snare_note = clap if style in ("drift_phonk", "boom_bap") else snare
-                        events_to_trigger.append((snare_note, 105))
+                        # Four-on-the-floor kick driving the climb
+                        if step % 4 == 0:
+                            events_to_trigger.append((kick, 106))
+                    else:
+                        # Standard Kick pattern by genre
+                        if style == "four_on_floor":
+                            if step % 4 == 0:  # Beats 1, 2, 3, 4
+                                events_to_trigger.append((kick, 108))
+                        elif style == "drift_phonk":
+                            if step in (0, 6, 8, 14):
+                                events_to_trigger.append((kick, 115))
+                            if step % 2 == 0:  # Phonk signature cowbell syncopation
+                                events_to_trigger.append((cowbell, 95))
+                        elif style == "boom_bap":
+                            if step in (0, 7, 10):
+                                events_to_trigger.append((kick, 102))
+                        elif style == "metal_blast":
+                            if step in (0, 2, 4, 6, 8, 10, 12, 14):  # Relentless double-bass kick
+                                events_to_trigger.append((kick, 118))
+                        elif style == "reggae_one_drop":
+                            if step == 8:  # Heavy kick on Beat 3 only
+                                events_to_trigger.append((kick, 105))
+                        elif style == "indian_fusion":
+                            if step in (0, 3, 6, 10):  # Syncopated fusion rhythm
+                                events_to_trigger.append((kick, 104))
+                        elif style == "jazz_swing":
+                            if step == 0:  # Soft feathered acoustic kick
+                                events_to_trigger.append((kick, 65))
+                        elif style == "country_train":
+                            if step in (0, 8):  # Driving bass notes
+                                events_to_trigger.append((kick, 98))
+                        else:  # Standard rock/pop backbeat
+                            if step in (0, 8):
+                                events_to_trigger.append((kick, 105))
+
+                        # Standard Snare / Clap pattern by genre
+                        if style == "reggae_one_drop":
+                            if step == 8:
+                                events_to_trigger.append((rimshot, 108))
+                        elif style == "jazz_swing":
+                            pass
+                        elif style == "country_train":
+                            train_vel = 100 if step in (4, 12) else 65
+                            events_to_trigger.append((snare, train_vel))
+                        elif step in (4, 12):
+                            snare_note = clap if style in ("drift_phonk", "boom_bap") else snare
+                            events_to_trigger.append((snare_note, 105))
 
                     # Hi-Hat & Cymbals pattern
                     if style == "jazz_swing":
@@ -736,4 +781,51 @@ class SongGenerator:
                         delta = 0  # subsequent simultaneous events happen at delta 0
 
         return track
+
+
+def main():
+    parser = argparse.ArgumentParser(description="MusicSkills Multi-Track MIDI and Lyrics Generator")
+    parser.add_argument("--topic", "--title", dest="topic", default="Electronic Sunset", help="Song title or topic")
+    parser.add_argument("--genre", default="electronic", choices=list(GENRE_PROFILES.keys()), help="Musical genre")
+    parser.add_argument("--mood", default="energetic", help="Mood expression (energetic, chill, dark, uplifting)")
+    parser.add_argument("--purpose", default="driving", help="Narrative or situational purpose")
+    parser.add_argument("--tempo", "--bpm", dest="tempo", type=int, default=None, help="Tempo in BPM (defaults to genre standard)")
+    parser.add_argument("--key", default="C", help="Musical root key (e.g. C, Am, F#, Eb)")
+    parser.add_argument("--humanize", action="store_true", default=True, help="Apply micro-timing jitter and velocity dynamics")
+    parser.add_argument("--output", default="./output", help="Output directory for generated MIDI, lead sheet, LRC, JSON, and SRT")
+    parser.add_argument("--lyrics-file", default=None, help="Path to text or markdown file containing lyrics")
+
+    args = parser.parse_args()
+
+    raw_lyrics = None
+    if args.lyrics_file and os.path.exists(args.lyrics_file):
+        with open(args.lyrics_file, "r", encoding="utf-8") as lf:
+            raw_lyrics = parse_lyrics_text(lf.read())
+
+    generator = SongGenerator(
+        topic=args.topic,
+        genre=args.genre,
+        mood=args.mood,
+        purpose=args.purpose,
+        tempo_bpm=args.tempo,
+        root_key=args.key,
+        humanizer=default_humanizer if args.humanize else Humanizer(timing_jitter=0, velocity_variance=0),
+        lyrics=raw_lyrics,
+    )
+
+    print(f"[MusicSkills] Generating backing track: '{args.topic}'")
+    print(f"Genre: {args.genre} | Tempo: {generator.bpm} BPM | Key: {generator.root_key} {generator.profile.scale_type}")
+    print(f"Output directory: {args.output}")
+
+    results = generator.generate(output_dir=args.output)
+    print("\nGeneration Complete:")
+    for key, path in results.items():
+        print(f"  - {key.upper()}: {path}")
+
+    print("\n[Disclaimer: This tool does not synthesize human vocals. Import lead_sheet.md or .lrc to sing over backing track.]")
+
+
+if __name__ == "__main__":
+    main()
+
 

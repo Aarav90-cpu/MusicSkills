@@ -77,8 +77,6 @@ export const SettingsPage: React.FC = () => {
           { id: 'gemini-4-argon', name: 'Gemini 4 Argon (Flagship Heavy Multimodal & Reasoning)' },
           { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (Deep Research & Coding Specialist)' },
           { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (High-Speed Rapid Response)' },
-          { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Fast Multimodal)' },
-          { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Massive Context)' },
         ];
       case 'openai':
         return [
@@ -651,7 +649,7 @@ export const SettingsPage: React.FC = () => {
             }}
           >
             <span className="material-icons-round" style={{ fontSize: '16px' }}>storage</span>
-            Storage Directory: /home/aarav/MusicSkills/.chats/ ({chats.length} active projects)
+            Storage Directory: .chats/ ({chats.length} active projects - Local-First)
           </div>
 
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>

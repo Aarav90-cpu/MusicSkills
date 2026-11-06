@@ -195,6 +195,54 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </button>
 
           <button
+            className={`btn ${route === 'code' ? 'btn-tonal' : 'btn-text'}`}
+            onClick={() => setRoute('code')}
+            style={{
+              width: '100%',
+              height: '48px',
+              justifyContent: isDrawerCollapsed ? 'center' : 'flex-start',
+              padding: isDrawerCollapsed ? '0' : '0 16px',
+              backgroundColor: route === 'code' ? 'var(--color-primary-container)' : 'transparent',
+              color: route === 'code' ? 'var(--color-on-primary-container)' : 'var(--color-text)',
+            }}
+          >
+            <span className="material-icons-round">terminal</span>
+            {!isDrawerCollapsed && <span>Code Editor</span>}
+          </button>
+
+          <button
+            className={`btn ${route === 'video' ? 'btn-tonal' : 'btn-text'}`}
+            onClick={() => setRoute('video')}
+            style={{
+              width: '100%',
+              height: '48px',
+              justifyContent: isDrawerCollapsed ? 'center' : 'flex-start',
+              padding: isDrawerCollapsed ? '0' : '0 16px',
+              backgroundColor: route === 'video' ? 'var(--color-primary-container)' : 'transparent',
+              color: route === 'video' ? 'var(--color-on-primary-container)' : 'var(--color-text)',
+            }}
+          >
+            <span className="material-icons-round">movie_filter</span>
+            {!isDrawerCollapsed && <span>Video Studio</span>}
+          </button>
+
+          <button
+            className={`btn ${route === 'stats' ? 'btn-tonal' : 'btn-text'}`}
+            onClick={() => setRoute('stats')}
+            style={{
+              width: '100%',
+              height: '48px',
+              justifyContent: isDrawerCollapsed ? 'center' : 'flex-start',
+              padding: isDrawerCollapsed ? '0' : '0 16px',
+              backgroundColor: route === 'stats' ? 'var(--color-primary-container)' : 'transparent',
+              color: route === 'stats' ? 'var(--color-on-primary-container)' : 'var(--color-text)',
+            }}
+          >
+            <span className="material-icons-round">insights</span>
+            {!isDrawerCollapsed && <span>Player & Stats</span>}
+          </button>
+
+          <button
             className={`btn ${route === 'settings' ? 'btn-tonal' : 'btn-text'}`}
             onClick={() => setRoute('settings')}
             style={{

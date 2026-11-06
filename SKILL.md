@@ -24,6 +24,7 @@ MusicSkills/
 ├── .gitignore                        # Git ignore patterns (.venv, cache, generated outputs)
 ├── references/                       # In-depth technical documentation for agents & producers
 │   ├── song_structure_guide.md       # Comprehensive breakdown of all 7 song sections, energy curves, & bars
+│   ├── beat_drops_and_transitions.md # Guide to climbs, risers, pre-drop silence, drop impacts, and drum fills
 │   ├── genres_and_styles.md          # 10 major genres, subgenres, 14 moods, 12 purposes, & dimensional formula
 │   ├── humanization_techniques.md    # Anti-AI detection math: timing jitter, dynamic velocity, legato/staccato
 │   └── lyrical_timestamping.md       # Conversion formulas (BPM to seconds), breathing cues, and lyric formats
@@ -39,14 +40,14 @@ MusicSkills/
 │   ├── audio.ts                      # FluidSynth & FFmpeg 192k MP3 synthesis and vocal mixdown
 │   ├── chats.ts                      # Local storage manager (.chats/{name}-{id}/)
 │   └── config.ts                     # System settings and API credential management
-├── src/                              # Material 3 Dark Studio frontend (React 19 + TypeScript + Vite)
+├── src/                              # Material 3 Clean Minimal Studio frontend (React 19 + TypeScript + Vite)
 │   ├── App.tsx                       # Primary studio router
 │   ├── main.tsx                      # Application mount
-│   ├── components/                   # Modular studio components (AppShell, PersistentPlayer, ActivityPanel, Waveform)
-│   ├── pages/                        # Studio views (Welcome, Setup, Home, ChatCreation, VocalStudio, Iterate, ScrollingLyrics, Settings)
+│   ├── components/                   # Modular studio components (AppShell, PersistentPlayer, ActivityPanel, FloatingChatBox, Waveform)
+│   ├── pages/                        # Studio views (Welcome, Setup, Home, ChatCreation, VocalStudio, Iterate, ScrollingLyrics, CodeEditor, Stats, MusicVideo, Settings)
 │   ├── context/                      # Global AppContext (theme, audio player, activity events, chats)
-│   ├── styles/                       # Material 3 tokens & Dark Studio palette (--color-bg: #0F0E15)
-│   ├── utils/                        # Frontend utilities (lrcParser, githubReporting)
+│   ├── styles/                       # Minimal studio tokens & Dark Studio palette (--color-bg: #09080E)
+│   ├── utils/                        # Frontend utilities (lrcParser, lrclib, libraryStorage, githubReporting)
 │   └── types/                        # Complete TypeScript contracts
 ├── examples/                         # Ready-to-run demonstration scripts
 │   ├── __init__.py

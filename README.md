@@ -283,16 +283,29 @@ Visit `http://localhost:3000` in your browser.
    - Active line highlighted with neon specular glow, dynamic energy badges, and text pop animations.
    - Interactive click-to-seek playback jumping: click any lyric line to instantly scrub audio to that timestamp.
    - Configurable font sizing (Normal, Large, Extra Large), auto-follow toggle, and timing offset calibration ($\pm 0.2\text{s}$).
-9. **Interactive Real-Time Lyrics Syncer**:
-   - Real-time line-by-line audio synchronization: tap the button or press **SPACEBAR** while listening to stamp timestamps.
+9. **Interactive Real-Time Lyrics Syncer & LRCLIB Integration**:
+   - Real-time line-by-line audio synchronization: press the **ENTER** key while listening to stamp timestamps. Spacebar controls play/pause without conflicting!
+   - LRCLIB search and one-click fetch: download synchronized `.lrc` and plain lyrics directly from lrclib.net.
    - Precision timestamp nudging ($\pm 0.1\text{s}$ / $\pm 0.5\text{s}$) with live line previews.
    - Export directly to standard synchronized `.lrc` (karaoke) and `.srt` (subtitles) or save back to the active project.
 10. **Custom Song Pairing & Project Import/Export**:
    - Pair any external custom audio file (`.mp3`, `.wav`, `.ogg`, `.m4a`) with an `.lrc` file or raw lyrics for immediate scrolling playback.
    - "Save as Library Project" option saves custom pairings into `.chats/` as first-class studio projects.
    - Universal project import and export handling: download self-contained `.zip` archives containing all MIDI arrangements, rendered audio, lead sheets, vocal takes, and chat history.
-11. **Local-First & Private**:
-   - All projects, audio takes, stems, and MIDI files are kept locally in `.chats/`.
+11. **In-Studio Python Engine Editor & Subprocess Runner**:
+   - View, edit, and run Python music generation scripts directly from the browser (`/code`).
+   - Integrated subprocess console displaying real-time execution logs, exit codes, and stdout/stderr.
+12. **Floating AI Producer Assistant (Code Diff Accept/Deny)**:
+   - Floating corner chat box that can be minimized or maximized to full screen.
+   - Proposes code and arrangement modifications with line count diff cards (`+X / -Y lines`), expandable code previews, and one-click "Accept Changes" or "Deny" actions.
+13. **Remotion + Three.js 3D Music Video Studio**:
+   - Dedicated music video workstation (`/video`) with live WebGL 3D audio-reactive visualizer and Remotion-style timeline controller (frames, playhead, 4 multi-track layers).
+   - Dual-mode workflow: switch seamlessly between **Timeline Preview** and **Composition Code** to customize Three.js shaders and particles.
+14. **Studio Analytics & Music Player (Playlists, Favorites, Token Tracking)**:
+   - Dedicated player analytics dashboard (`/stats`): tracks listening time, composing/coding time, and AI model token consumption.
+   - Full music player suite: create custom playlists, group by albums/artists, and manage favorite tracks.
+15. **Local-First & Private**:
+   - All projects, audio takes, stems, and MIDI files are kept locally in `.chats/`. Cross-platform dynamic path resolution with zero hardcoded paths.
 
 ---
 

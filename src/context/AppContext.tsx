@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { ChatSession, ActivityEvent, PlayerTrack } from '../types';
 
-export type AppRoute = 'welcome' | 'setup' | 'home' | 'chat' | 'vocals' | 'iterate' | 'settings' | 'lyrics';
+export type AppRoute = 'welcome' | 'setup' | 'home' | 'chat' | 'vocals' | 'iterate' | 'settings' | 'lyrics' | 'code' | 'stats' | 'video';
 
 interface AppContextType {
   route: AppRoute;

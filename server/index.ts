@@ -3,7 +3,11 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { loadConfig, saveConfig, maskKey } from './config';
+
+const execFileAsync = promisify(execFile);
 import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap } from './chats';
 import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey } from './ai';
 import { renderSong, mixVocalTake } from './audio';
@@ -466,6 +470,219 @@ app.get('/api/chats/:id/download/:filename', (req, res) => {
   }
 
   res.download(filePath);
+});
+
+// --- COVER & VARIATION CREATOR ROUTE ---
+
+app.post('/api/chats/:id/cover', async (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  const { chat, dirPath } = result;
+  const { targetSection, coverInstruction, bpm, genre } = req.body;
+
+  const versionCount = chat.versions.length + 1;
+  const versionLabel = `v${versionCount} (Cover)`;
+  const baseName = `${chat.folderName}_cover_v${versionCount}`;
+
+  const effectiveBpm = bpm ? parseInt(bpm) : chat.style.bpm;
+  const effectiveGenre = genre || chat.style.genre;
+
+  try {
+    const render = await renderSong({
+      chatDir: dirPath,
+      topic: `${chat.name} (Cover)`,
+      genre: effectiveGenre,
+      mood: (chat.style.moods && chat.style.moods[0]) || 'energetic',
+      purpose: (chat.style.purposes && chat.style.purposes[0]) || 'workout music',
+      bpm: effectiveBpm,
+      key: chat.style.key || 'C',
+      lyrics: chat.lyrics,
+      baseName,
+    });
+
+    const newVersion = {
+      version: versionLabel,
+      createdAt: new Date().toISOString(),
+      bpm: effectiveBpm,
+      key: chat.style.key,
+      midiFile: render.midiFile,
+      mp3File: render.mp3File,
+      leadSheetFile: render.leadSheetFile,
+      durationSec: render.durationSec,
+      notes: `Cover variation: ${coverInstruction || 'Arrangement variation'}`,
+    };
+
+    chat.versions.push(newVersion);
+    chat.step = 'result';
+    saveChat(chat);
+
+    res.json({
+      success: true,
+      version: newVersion,
+      peaks: render.peaks,
+      chat,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to render cover variation' });
+  }
+});
+
+// --- PYTHON CODE EDITOR & RUNNER ROUTES ---
+
+app.get('/api/code/files', (req, res) => {
+  const baseScriptsDir = path.resolve(process.cwd(), 'scripts');
+  const files: Array<{ name: string; path: string; size: number }> = [];
+
+  if (fs.existsSync(baseScriptsDir)) {
+    const entries = fs.readdirSync(baseScriptsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.py')) {
+        const fullPath = path.join(baseScriptsDir, entry.name);
+        const stat = fs.statSync(fullPath);
+        files.push({
+          name: entry.name,
+          path: path.relative(process.cwd(), fullPath),
+          size: stat.size,
+        });
+      }
+    }
+  }
+
+  const chatId = req.query.chatId as string;
+  if (chatId) {
+    const result = getChat(chatId);
+    if (result && fs.existsSync(result.dirPath)) {
+      const projectEntries = fs.readdirSync(result.dirPath, { withFileTypes: true });
+      for (const entry of projectEntries) {
+        if (entry.isFile() && entry.name.endsWith('.py')) {
+          const fullPath = path.join(result.dirPath, entry.name);
+          const stat = fs.statSync(fullPath);
+          files.push({
+            name: `${result.chat.name} / ${entry.name}`,
+            path: path.relative(process.cwd(), fullPath),
+            size: stat.size,
+          });
+        }
+      }
+    }
+  }
+
+  res.json({ files });
+});
+
+app.get('/api/code/file', (req, res) => {
+  const relPath = req.query.path as string;
+  if (!relPath) return res.status(400).json({ error: 'Missing path parameter' });
+
+  const resolved = path.resolve(process.cwd(), relPath);
+  if (!resolved.startsWith(process.cwd())) {
+    return res.status(403).json({ error: 'Access denied: outside workspace' });
+  }
+
+  if (!fs.existsSync(resolved)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const content = fs.readFileSync(resolved, 'utf-8');
+  res.json({ path: relPath, content });
+});
+
+app.post('/api/code/file', (req, res) => {
+  const { path: relPath, content } = req.body;
+  if (!relPath || content === undefined) {
+    return res.status(400).json({ error: 'Missing path or content parameter' });
+  }
+
+  const resolved = path.resolve(process.cwd(), relPath);
+  if (!resolved.startsWith(process.cwd())) {
+    return res.status(403).json({ error: 'Access denied: outside workspace' });
+  }
+
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, content, 'utf-8');
+  res.json({ success: true, path: relPath, bytes: Buffer.byteLength(content) });
+});
+
+app.post('/api/code/run', async (req, res) => {
+  const { path: relPath, args = [] } = req.body;
+  if (!relPath) return res.status(400).json({ error: 'Missing path parameter' });
+
+  const resolved = path.resolve(process.cwd(), relPath);
+  if (!resolved.startsWith(process.cwd())) {
+    return res.status(403).json({ error: 'Access denied: outside workspace' });
+  }
+
+  const pythonBin = fs.existsSync(path.resolve(process.cwd(), '.venv/bin/python'))
+    ? path.resolve(process.cwd(), '.venv/bin/python')
+    : 'python3';
+
+  try {
+    const { stdout, stderr } = await execFileAsync(pythonBin, [resolved, ...args], {
+      cwd: process.cwd(),
+      timeout: 30000,
+    });
+    res.json({ success: true, stdout, stderr, exitCode: 0 });
+  } catch (err: any) {
+    res.json({
+      success: false,
+      stdout: err.stdout || '',
+      stderr: err.stderr || err.message,
+      exitCode: err.code || 1,
+    });
+  }
+});
+
+// --- LRCLIB LYRICS PROXY ROUTES ---
+
+app.get('/api/lrclib/search', async (req, res) => {
+  const q = req.query.q as string;
+  if (!q) return res.json([]);
+
+  try {
+    const lrclibRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`, {
+      headers: {
+        'User-Agent': 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)',
+        'Lrclib-Client': 'MusicSkills-Studio/1.0.0',
+      },
+    });
+    if (lrclibRes.ok) {
+      const data = await lrclibRes.json();
+      return res.json(data);
+    }
+    res.json([]);
+  } catch (err: any) {
+    res.status(502).json({ error: 'LRCLIB request failed', details: err.message });
+  }
+});
+
+app.get('/api/lrclib/get', async (req, res) => {
+  const { track_name, artist_name, album_name, duration } = req.query;
+  if (!track_name || !artist_name) {
+    return res.status(400).json({ error: 'track_name and artist_name are required' });
+  }
+
+  const query = new URLSearchParams();
+  query.set('track_name', track_name as string);
+  query.set('artist_name', artist_name as string);
+  if (album_name) query.set('album_name', album_name as string);
+  if (duration) query.set('duration', duration as string);
+
+  try {
+    const lrclibRes = await fetch(`https://lrclib.net/api/get?${query.toString()}`, {
+      headers: {
+        'User-Agent': 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)',
+        'Lrclib-Client': 'MusicSkills-Studio/1.0.0',
+      },
+    });
+    if (lrclibRes.ok) {
+      const data = await lrclibRes.json();
+      return res.json(data);
+    }
+    res.status(lrclibRes.status).json({ error: 'Not found on LRCLIB' });
+  } catch (err: any) {
+    res.status(502).json({ error: 'LRCLIB request failed', details: err.message });
+  }
 });
 
 // --- SERVER INITIALIZATION WITH VITE INTEGRATION ---

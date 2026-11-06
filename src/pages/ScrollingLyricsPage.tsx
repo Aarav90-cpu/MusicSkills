@@ -8,6 +8,7 @@ import {
   formatTime,
   SyncedLyricLine,
 } from '../utils/lrcParser';
+import { searchFirstLyricsFromLRCLib } from '../utils/lrclib';
 
 export const ScrollingLyricsPage: React.FC = () => {
   const {
@@ -133,26 +134,56 @@ export const ScrollingLyricsPage: React.FC = () => {
     }
   };
 
-  // Keyboard shortcut listener (Spacebar for syncer tap or play/pause)
+  // Keyboard shortcut listener (ENTER for lyrics syncer stamping, SPACE for playback)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      if (e.code === 'Space') {
-        e.preventDefault();
+      if (e.code === 'Enter') {
         if (mode === 'syncer') {
+          e.preventDefault();
           handleSyncCurrentLine();
-        } else {
-          if (isPlaying) pauseTrack();
-          else if (currentTrack) playTrack(currentTrack);
         }
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        if (isPlaying) pauseTrack();
+        else if (currentTrack) playTrack(currentTrack);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mode, isPlaying, currentTrack, currentTime, syncIndex, syncedLines]);
+
+  const [isFetchingLrcLib, setIsFetchingLrcLib] = useState(false);
+
+  // Fetch lyrics from LRCLIB
+  const handleFetchFromLRCLib = async () => {
+    setIsFetchingLrcLib(true);
+    showSnackbar(`Searching LRCLIB for "${currentSongName}"...`);
+    try {
+      const record = await searchFirstLyricsFromLRCLib(currentSongName);
+      if (record && record.syncedLyrics) {
+        setCustomLrcText(record.syncedLyrics);
+        const parsed = parseLRC(record.syncedLyrics);
+        setSyncedLines(parsed.lines);
+        showSnackbar(`Loaded ${parsed.lines.length} synchronized lines from LRCLIB (${record.artistName || 'Unknown Artist'})`);
+      } else if (record && record.plainLyrics) {
+        setCustomLrcText(record.plainLyrics);
+        const parsed = parseLRC(record.plainLyrics);
+        setSyncedLines(parsed.lines);
+        showSnackbar(`Loaded plain lyrics from LRCLIB. Ready to sync with Enter key!`);
+        setMode('syncer');
+      } else {
+        showSnackbar('No matching lyrics found on LRCLIB');
+      }
+    } catch (err: any) {
+      showSnackbar(`LRCLIB search error: ${err.message}`);
+    } finally {
+      setIsFetchingLrcLib(false);
+    }
+  };
 
   // Lyrics Syncer: Stamp current timestamp to active sync line
   const handleSyncCurrentLine = () => {
@@ -543,8 +574,20 @@ export const ScrollingLyricsPage: React.FC = () => {
             </>
           )}
 
-          {/* Export Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Export & LRCLIB Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* LRCLIB Fetch Button */}
+            <button
+              onClick={handleFetchFromLRCLib}
+              disabled={isFetchingLrcLib}
+              className="btn btn-outlined"
+              style={{ height: '32px', padding: '0 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Search and download synchronized lyrics from LRCLIB"
+            >
+              <span className="material-icons-round" style={{ fontSize: '16px' }}>cloud_download</span>
+              <span>{isFetchingLrcLib ? 'Searching...' : 'Fetch LRCLIB'}</span>
+            </button>
+
             <button
               onClick={handleExportLRC}
               className="btn btn-outlined"
@@ -682,20 +725,20 @@ export const ScrollingLyricsPage: React.FC = () => {
               }}
             >
               <div>
-                <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>Live Lyrics Syncer</h3>
-                <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', lineHeight: 1.5, marginBottom: '24px' }}>
-                  Play the song and tap the button or press <strong>SPACEBAR</strong> each time a new lyric phrase begins!
+                <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px' }}>Live Lyrics Syncer</h3>
+                <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
+                  Play the track and press the <strong>ENTER</strong> key to stamp timestamps line by line. Spacebar toggles play and pause!
                 </p>
 
                 {/* Current Playback Counter */}
                 <div
                   style={{
-                    backgroundColor: 'var(--color-bg)',
-                    border: '1px solid var(--color-outline)',
+                    backgroundColor: '#0E0D14',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: 'var(--radius-md)',
                     padding: '16px',
                     textAlign: 'center',
-                    marginBottom: '24px',
+                    marginBottom: '20px',
                   }}
                 >
                   <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
@@ -716,7 +759,7 @@ export const ScrollingLyricsPage: React.FC = () => {
                     border: '1px solid var(--color-primary)',
                     borderRadius: 'var(--radius-md)',
                     padding: '16px',
-                    marginBottom: '24px',
+                    marginBottom: '20px',
                   }}
                 >
                   <div style={{ fontSize: '11px', color: 'var(--color-primary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
@@ -731,29 +774,29 @@ export const ScrollingLyricsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Big Pulsing Sync Button */}
+              {/* Big Pulsing Sync Button with ENTER key */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <button
                   onClick={handleSyncCurrentLine}
-                  className="btn btn-gradient"
+                  className="btn btn-primary"
                   style={{
-                    height: '64px',
-                    fontSize: '16px',
+                    height: '56px',
+                    fontSize: '15px',
                     fontWeight: 700,
                     borderRadius: 'var(--radius-md)',
                     justifyContent: 'center',
                     boxShadow: '0 0 20px rgba(110, 68, 255, 0.4)',
                   }}
                 >
-                  <span className="material-icons-round" style={{ fontSize: '24px' }}>timer</span>
-                  SYNC ACTIVE LINE [SPACE]
+                  <span className="material-icons-round" style={{ fontSize: '22px' }}>keyboard_return</span>
+                  <span>SYNC ACTIVE LINE [ENTER]</span>
                 </button>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
                     onClick={() => setSyncIndex(0)}
                     className="btn btn-outlined"
-                    style={{ flex: 1, height: '40px', fontSize: '12px', justifyContent: 'center' }}
+                    style={{ flex: 1, height: '38px', fontSize: '12px', justifyContent: 'center' }}
                   >
                     <span className="material-icons-round" style={{ fontSize: '16px' }}>restart_alt</span>
                     Start Over
@@ -764,12 +807,12 @@ export const ScrollingLyricsPage: React.FC = () => {
                       else if (currentTrack) playTrack(currentTrack);
                     }}
                     className="btn btn-tonal"
-                    style={{ flex: 1, height: '40px', fontSize: '12px', justifyContent: 'center' }}
+                    style={{ flex: 1, height: '38px', fontSize: '12px', justifyContent: 'center' }}
                   >
                     <span className="material-icons-round" style={{ fontSize: '18px' }}>
                       {isPlaying ? 'pause' : 'play_arrow'}
                     </span>
-                    {isPlaying ? 'Pause Audio' : 'Play Audio'}
+                    {isPlaying ? 'Pause [Space]' : 'Play [Space]'}
                   </button>
                 </div>
               </div>
@@ -1102,3 +1145,4 @@ export const ScrollingLyricsPage: React.FC = () => {
     </div>
   );
 };
+

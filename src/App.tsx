@@ -9,6 +9,10 @@ import { VocalStudioPage } from './pages/VocalStudioPage';
 import { IteratePage } from './pages/IteratePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ScrollingLyricsPage } from './pages/ScrollingLyricsPage';
+import { CodeEditorPage } from './pages/CodeEditorPage';
+import { StatsPage } from './pages/StatsPage';
+import { MusicVideoStudioPage } from './pages/MusicVideoStudioPage';
+import { FloatingChatBox } from './components/FloatingChatBox';
 
 export const App: React.FC = () => {
   const { route } = useApp();
@@ -29,6 +33,12 @@ export const App: React.FC = () => {
         return <IteratePage />;
       case 'lyrics':
         return <ScrollingLyricsPage />;
+      case 'code':
+        return <CodeEditorPage />;
+      case 'stats':
+        return <StatsPage />;
+      case 'video':
+        return <MusicVideoStudioPage />;
       case 'settings':
         return <SettingsPage />;
       default:
@@ -36,6 +46,11 @@ export const App: React.FC = () => {
     }
   };
 
-  return <AppShell>{renderCurrentPage()}</AppShell>;
+  return (
+    <AppShell>
+      {renderCurrentPage()}
+      <FloatingChatBox />
+    </AppShell>
+  );
 };
 
