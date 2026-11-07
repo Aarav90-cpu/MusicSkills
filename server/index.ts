@@ -1835,9 +1835,9 @@ async function startServer() {
   setupFileWatchers();
   const isDev = process.env.NODE_ENV !== 'production';
 
-  // Strict API route guard: guarantees /api/* requests never return HTML fallback
-  app.all('/api/*', (req, res) => {
-    res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` });
+  // Strict API route guard: guarantees /api requests never return HTML fallback
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl || req.path}` });
   });
 
   if (isDev) {
@@ -1851,7 +1851,7 @@ async function startServer() {
     const distPath = path.resolve(process.cwd(), 'dist');
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
-      app.get('*', (req, res) => {
+      app.use((req, res) => {
         res.sendFile(path.join(distPath, 'index.html'));
       });
     }
