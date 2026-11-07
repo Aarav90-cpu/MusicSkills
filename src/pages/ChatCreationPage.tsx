@@ -1233,8 +1233,20 @@ export const ChatCreationPage: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       setCodeAccepted(true);
+                      if (activeChatId && customPythonCode) {
+                        try {
+                          await fetch('/api/code/file', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              path: 'composition.py',
+                              content: customPythonCode,
+                            }),
+                          });
+                        } catch (_) {}
+                      }
                       showSnackbar('Accepted Python script: will be executed upon rendering');
                     }}
                     className={`btn ${codeAccepted ? 'btn-primary' : 'btn-outlined'}`}

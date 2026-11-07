@@ -171,15 +171,8 @@ export async function renderSong(params: {
     }
   }
 
-  // Generate synthetic waveform peaks (100 points)
-  const peaks: number[] = [];
-  for (let i = 0; i < 100; i++) {
-    // Generate organic musical waveform peaks
-    const norm = i / 100;
-    const wave = Math.sin(norm * Math.PI * 4) * 0.3 + Math.sin(norm * Math.PI * 14) * 0.2 + 0.5;
-    const jitter = (Math.random() - 0.5) * 0.15;
-    peaks.push(Math.max(0.08, Math.min(1.0, wave + jitter)));
-  }
+  // Extract real waveform peaks from the rendered MP3 file (100 points)
+  const peaks = await extractWaveformPeaks(mp3Path, 100);
 
   return {
     midiFile: `${baseName}.mid`,
@@ -191,6 +184,55 @@ export async function renderSong(params: {
     durationSec,
     peaks,
   };
+}
+
+/**
+ * Extract real normalized audio waveform peaks (0.0 to 1.0) using ffmpeg 4000Hz s16le PCM stream
+ */
+export async function extractWaveformPeaks(audioPath: string, numPeaks: number = 100): Promise<number[]> {
+  if (!fs.existsSync(audioPath)) {
+    return generateFallbackPeaks(numPeaks);
+  }
+
+  try {
+    const cmd = `ffmpeg -v error -i "${audioPath}" -ac 1 -filter:a aresample=4000 -f s16le -`;
+    const { stdout } = await execAsync(cmd, { encoding: 'buffer', maxBuffer: 15 * 1024 * 1024 });
+    const buffer = stdout as unknown as Buffer;
+    if (!buffer || buffer.length < 2) {
+      return generateFallbackPeaks(numPeaks);
+    }
+
+    const sampleCount = Math.floor(buffer.length / 2);
+    const chunkSize = Math.max(1, Math.floor(sampleCount / numPeaks));
+    const peaks: number[] = [];
+
+    for (let i = 0; i < numPeaks; i++) {
+      let maxVal = 0;
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, sampleCount);
+      for (let s = start; s < end; s++) {
+        const val = Math.abs(buffer.readInt16LE(s * 2));
+        if (val > maxVal) maxVal = val;
+      }
+      peaks.push(parseFloat(Math.max(0.08, Math.min(1.0, maxVal / 32768)).toFixed(3)));
+    }
+
+    return peaks;
+  } catch (err) {
+    console.warn(`Could not extract waveform peaks from ${audioPath}, using fallback:`, err);
+    return generateFallbackPeaks(numPeaks);
+  }
+}
+
+function generateFallbackPeaks(numPeaks: number = 100): number[] {
+  const peaks: number[] = [];
+  for (let i = 0; i < numPeaks; i++) {
+    const norm = i / numPeaks;
+    const wave = Math.sin(norm * Math.PI * 4) * 0.3 + Math.sin(norm * Math.PI * 14) * 0.2 + 0.5;
+    const jitter = (Math.random() - 0.5) * 0.15;
+    peaks.push(parseFloat(Math.max(0.08, Math.min(1.0, wave + jitter)).toFixed(3)));
+  }
+  return peaks;
 }
 
 export async function mixVocalTake(params: {
@@ -218,10 +260,25 @@ export async function mixVocalTake(params: {
   const vocalPath = path.join(chatDir, vocalWav);
   const outputPath = path.join(chatDir, outputMp3);
 
-  const delaySec = (syncOffsetMs / 1000).toFixed(3);
-  // ffmpeg filter complex combining delay, volume, and mixing
-  const filter = `[1:a]volume=${vocalVolume},adelay=${Math.max(0, syncOffsetMs)}|${Math.max(0, syncOffsetMs)}[vocal];` +
-    `[0:a]volume=${backingVolume}[backing];` +
+  const vocalFilters = [`volume=${vocalVolume}`];
+  const backingFilters = [`volume=${backingVolume}`];
+
+  // Natural room acoustic reverb using ffmpeg aecho
+  if (reverbPercent > 0) {
+    const delay = Math.round(30 + reverbPercent * 0.8);
+    const decay = (reverbPercent / 250).toFixed(2);
+    vocalFilters.push(`aecho=0.8:0.7:${delay}:${decay}`);
+  }
+
+  // Latency & synchronization offset compensation
+  if (syncOffsetMs > 0) {
+    vocalFilters.push(`adelay=${syncOffsetMs}|${syncOffsetMs}`);
+  } else if (syncOffsetMs < 0) {
+    backingFilters.push(`adelay=${Math.abs(syncOffsetMs)}|${Math.abs(syncOffsetMs)}`);
+  }
+
+  const filter = `[1:a]${vocalFilters.join(',')}[vocal];` +
+    `[0:a]${backingFilters.join(',')}[backing];` +
     `[backing][vocal]amix=inputs=2:duration=longest:dropout_transition=2[out]`;
 
   const cmd = `ffmpeg -y -i "${backingPath}" -i "${vocalPath}" -filter_complex "${filter}" -map "[out]" -b:a 192k "${outputPath}"`;

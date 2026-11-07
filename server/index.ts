@@ -10,7 +10,7 @@ import { loadConfig, saveConfig, exportSettingsJson, importSettingsJson, maskKey
 const execFileAsync = promisify(execFile);
 import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap, backfillChatsMetadata, extractEmbeddedId3, sanitizeName, ChatSession } from './chats';
 import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey, fetchLRCLibReference, generatePythonMusicCode, editPythonMusicCode } from './ai';
-import { renderSong, mixVocalTake, renderMidiToAudio } from './audio';
+import { renderSong, mixVocalTake, renderMidiToAudio, extractWaveformPeaks } from './audio';
 import { detectExternalAgents, startAgentSession, getAgentSession, cancelAgentSession } from './externalAgents';
 
 async function checkCommand(cmd: string, args: string[]): Promise<{ installed: boolean; version?: string; path?: string }> {
@@ -430,15 +430,27 @@ app.post('/api/chats/:id/video/render', async (req, res) => {
   let coverPath = path.join(dirPath, 'cover.jpg');
   if (!fs.existsSync(coverPath)) {
     const pngCover = path.join(dirPath, 'cover.png');
-    if (fs.existsSync(pngCover)) coverPath = pngCover;
+    if (fs.existsSync(pngCover)) {
+      coverPath = pngCover;
+    } else {
+      // Try extracting embedded ID3 cover from MP3
+      const extracted = extractEmbeddedId3(mp3Path);
+      if (extracted.cover) {
+        fs.writeFileSync(coverPath, extracted.cover);
+      }
+    }
   }
+
+  const style = req.body?.style || (fs.existsSync(coverPath) ? 'album-art' : 'spectrum');
 
   try {
     let cmd = '';
-    if (fs.existsSync(coverPath)) {
-      cmd = `ffmpeg -y -loop 1 -i "${coverPath}" -i "${mp3Path}" -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -shortest "${outMp4Path}"`;
-    } else {
+    if (style === 'spectrum') {
+      cmd = `ffmpeg -y -i "${mp3Path}" -filter_complex "[0:a]showfreqs=s=1920x1080:mode=bar:ascale=log:fscale=log:colors=0x6E44FF|0x3CC4B2[v]" -map "[v]" -map 0:a -c:v libx264 -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "${outMp4Path}"`;
+    } else if (style === 'waveform' || !fs.existsSync(coverPath)) {
       cmd = `ffmpeg -y -i "${mp3Path}" -filter_complex "[0:a]showwaves=s=1920x1080:mode=line:colors=0x6E44FF[v]" -map "[v]" -map 0:a -c:v libx264 -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "${outMp4Path}"`;
+    } else {
+      cmd = `ffmpeg -y -loop 1 -i "${coverPath}" -i "${mp3Path}" -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -shortest "${outMp4Path}"`;
     }
 
     await execFileAsync('sh', ['-c', cmd], { timeout: 120000 });
@@ -788,41 +800,88 @@ async function handleAudioRequest(req: express.Request, res: express.Response) {
   });
 }
 
+function generateCoverArtSvg(title: string, artist: string = 'MusicSkills Studio'): string {
+  const cleanTitle = (title || 'Studio Track').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 32);
+  const cleanArtist = (artist || 'MusicSkills Studio').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 28);
+  const initials = cleanTitle.split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || 'MS';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B1530"/>
+      <stop offset="50%" stop-color="#0E0D18"/>
+      <stop offset="100%" stop-color="#07060B"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6E44FF"/>
+      <stop offset="100%" stop-color="#3CC4B2"/>
+    </linearGradient>
+    <linearGradient id="disc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14131D"/>
+      <stop offset="100%" stop-color="#0A0910"/>
+    </linearGradient>
+  </defs>
+  <rect width="500" height="500" rx="16" fill="url(#bg)"/>
+  <!-- Concentric Grooves -->
+  <circle cx="250" cy="210" r="150" fill="url(#disc)" stroke="#262338" stroke-width="2"/>
+  <circle cx="250" cy="210" r="130" fill="none" stroke="#221F33" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <circle cx="250" cy="210" r="110" fill="none" stroke="#1E1B2D" stroke-width="1"/>
+  <circle cx="250" cy="210" r="90" fill="none" stroke="#262338" stroke-width="1.5"/>
+  <circle cx="250" cy="210" r="70" fill="none" stroke="#1E1B2D" stroke-width="1" stroke-dasharray="6 3"/>
+  <!-- Center Spindle -->
+  <circle cx="250" cy="210" r="50" fill="url(#accent)"/>
+  <circle cx="250" cy="210" r="14" fill="#07060B"/>
+  <text x="250" y="217" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="900" fill="#FFFFFF" text-anchor="middle">${initials}</text>
+  <!-- Track Typography -->
+  <text x="250" y="415" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">${cleanTitle}</text>
+  <text x="250" y="445" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="500" fill="#9D9AB4" text-anchor="middle">${cleanArtist}</text>
+</svg>`;
+}
+
 async function handleCoverRequest(req: express.Request, res: express.Response) {
   const chatId = req.params.chatId as string;
   const titleHint = (req.query.title as string) || (req.query.name as string);
 
   const resolved = await resolveChatDirectory(chatId, titleHint);
-  if (!resolved) {
-    return res.status(404).send('Cover art not found');
-  }
+  if (resolved) {
+    const { dirPath, chat } = resolved;
+    const coverJpg = path.join(dirPath, 'cover.jpg');
+    const coverPng = path.join(dirPath, 'cover.png');
 
-  const { dirPath } = resolved;
-  const coverJpg = path.join(dirPath, 'cover.jpg');
-  const coverPng = path.join(dirPath, 'cover.png');
+    if (fs.existsSync(coverJpg)) {
+      return res.sendFile(path.resolve(coverJpg), { dotfiles: 'allow', headers: { 'Content-Type': 'image/jpeg' } });
+    }
+    if (fs.existsSync(coverPng)) {
+      return res.sendFile(path.resolve(coverPng), { dotfiles: 'allow', headers: { 'Content-Type': 'image/png' } });
+    }
 
-  if (fs.existsSync(coverJpg)) {
-    return res.sendFile(path.resolve(coverJpg), { dotfiles: 'allow', headers: { 'Content-Type': 'image/jpeg' } });
-  }
-  if (fs.existsSync(coverPng)) {
-    return res.sendFile(path.resolve(coverPng), { dotfiles: 'allow', headers: { 'Content-Type': 'image/png' } });
-  }
-
-  // On-demand extraction of APIC from MP3
-  if (fs.existsSync(dirPath)) {
-    const files = fs.readdirSync(dirPath);
-    const mp3 = files.find(f => f.endsWith('.mp3'));
-    if (mp3) {
-      const mp3Path = path.join(dirPath, mp3);
-      const extracted = extractEmbeddedId3(mp3Path);
-      if (extracted.cover) {
-        fs.writeFileSync(coverJpg, extracted.cover);
-        return res.sendFile(path.resolve(coverJpg), { dotfiles: 'allow', headers: { 'Content-Type': extracted.mime || 'image/jpeg' } });
+    // On-demand extraction of APIC from MP3
+    if (fs.existsSync(dirPath)) {
+      const files = fs.readdirSync(dirPath);
+      const mp3 = files.find(f => f.endsWith('.mp3'));
+      if (mp3) {
+        const mp3Path = path.join(dirPath, mp3);
+        const extracted = extractEmbeddedId3(mp3Path);
+        if (extracted.cover) {
+          fs.writeFileSync(coverJpg, extracted.cover);
+          return res.sendFile(path.resolve(coverJpg), { dotfiles: 'allow', headers: { 'Content-Type': extracted.mime || 'image/jpeg' } });
+        }
       }
     }
+
+    const artist = chat.style?.description?.replace(/^Custom import by\s*/i, '') || 'MusicSkills Studio';
+    const svg = generateCoverArtSvg(chat.name, artist);
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(svg);
   }
 
-  return res.status(404).send('No cover art found in audio metadata');
+  // Fallback dynamic SVG cover badge
+  const fallbackTitle = titleHint || chatId || 'Studio Track';
+  const svg = generateCoverArtSvg(fallbackTitle, 'MusicSkills Studio');
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  return res.send(svg);
 }
 
 app.get(['/api/audio/:chatId/cover', '/api/chats/:chatId/cover'], handleCoverRequest);
@@ -884,7 +943,10 @@ app.post('/api/chats/:id/vocals/mix', async (req, res) => {
   } = req.body;
 
   try {
-    const outputFilename = `mix_${Date.now()}.mp3`;
+    const versionNum = result.chat.versions.length + 1;
+    const versionLabel = `v${versionNum}`;
+    const outputFilename = `${result.chat.folderName}_${versionLabel}_mixed.mp3`;
+
     const mixedFile = await mixVocalTake({
       chatDir: result.dirPath,
       backingMp3,
@@ -896,7 +958,36 @@ app.post('/api/chats/:id/vocals/mix', async (req, res) => {
       reverbPercent,
     });
 
-    res.json({ success: true, mixedFile });
+    let durationSec = 180;
+    try {
+      const durCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${path.join(result.dirPath, outputFilename)}"`;
+      const durOut = await execFileAsync('sh', ['-c', durCmd]);
+      const parsedDur = parseFloat(durOut.stdout.trim());
+      if (!isNaN(parsedDur) && parsedDur > 0) durationSec = Math.round(parsedDur);
+    } catch (_) {}
+
+    const newVersion = {
+      version: versionLabel,
+      createdAt: new Date().toISOString(),
+      bpm: result.chat.style.bpm || 120,
+      key: result.chat.style.key || 'C',
+      midiFile: '',
+      mp3File: outputFilename,
+      leadSheetFile: result.chat.versions[result.chat.versions.length - 1]?.leadSheetFile || '',
+      durationSec,
+      notes: `Vocal Studio Master Mix (${versionLabel})`,
+    };
+
+    result.chat.versions.push(newVersion);
+    saveChat(result.chat);
+
+    broadcastEvent({
+      type: 'chats_updated',
+      message: `Rendered vocal studio mix (${versionLabel}) for "${result.chat.name}"`,
+      payload: { id: result.chat.id, version: newVersion },
+    });
+
+    res.json({ success: true, mixedFile, version: newVersion, chat: result.chat });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to mix audio' });
   }
@@ -1208,13 +1299,7 @@ app.post('/api/ai/code/render', async (req, res) => {
       if (!isNaN(parsedDur) && parsedDur > 0) durationSec = Math.round(parsedDur);
     } catch (_) {}
 
-    const peaks: number[] = [];
-    for (let i = 0; i < 100; i++) {
-      const norm = i / 100;
-      const wave = Math.sin(norm * Math.PI * 4) * 0.35 + Math.sin(norm * Math.PI * 12) * 0.2 + 0.45;
-      const jitter = (Math.random() - 0.5) * 0.12;
-      peaks.push(Math.max(0.1, Math.min(1.0, wave + jitter)));
-    }
+    const peaks = await extractWaveformPeaks(mp3Path, 100);
 
     const newVersion = {
       version: versionLabel,
@@ -1362,21 +1447,34 @@ app.post('/api/agents/session/:id/cancel', (req, res) => {
 
 let watchDebounceTimer: NodeJS.Timeout | null = null;
 
-function scanOutputsRecursively(dir: string, baseDir = dir): Array<{ fullPath: string; relPath: string; dirName: string; fileName: string }> {
-  let results: Array<{ fullPath: string; relPath: string; dirName: string; fileName: string }> = [];
+interface ScannedOutputItem {
+  fullPath: string;
+  relPath: string;
+  dirName: string;
+  fileName: string;
+  baseName: string;
+  ext: string;
+}
+
+function scanOutputsRecursively(dir: string, baseDir = dir): ScannedOutputItem[] {
+  let results: ScannedOutputItem[] = [];
   if (!fs.existsSync(dir)) return results;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       results = results.concat(scanOutputsRecursively(full, baseDir));
-    } else if (entry.isFile() && entry.name.endsWith('.mid')) {
+    } else if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      const baseName = path.basename(entry.name, ext);
       const rel = path.relative(baseDir, full);
       results.push({
         fullPath: full,
         relPath: rel,
         dirName: path.dirname(rel) === '.' ? '' : path.dirname(rel),
         fileName: entry.name,
+        baseName,
+        ext,
       });
     }
   }
@@ -1386,74 +1484,159 @@ function scanOutputsRecursively(dir: string, baseDir = dir): Array<{ fullPath: s
 async function autoIntakeOutputs() {
   const outputsDir = path.resolve(process.cwd(), 'outputs');
   if (!fs.existsSync(outputsDir)) return;
-  const midEntries = scanOutputsRecursively(outputsDir);
+  const allEntries = scanOutputsRecursively(outputsDir);
 
-  for (const item of midEntries) {
-    const baseName = item.fileName.replace(/\.mid$/, '');
-    const existing = listChats().find(c => c.folderName.startsWith(baseName) || c.name.toLowerCase() === baseName.toLowerCase());
-    if (!existing) {
-      const title = baseName.replace(/[_-]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      let genre = 'pop';
-      if (item.dirName.includes('indian')) genre = 'indian';
-      else if (item.dirName.includes('rock')) genre = 'rock';
-      else if (item.dirName.includes('phonk')) genre = 'phonk';
-      else if (item.dirName.includes('electronic')) genre = 'electronic';
-      else if (item.dirName.includes('hip-hop')) genre = 'hip-hop';
+  // Group by directory + baseName
+  const groups = new Map<string, {
+    baseName: string;
+    dirName: string;
+    relPath: string;
+    title: string;
+    midPath?: string;
+    audioPath?: string;
+    lrcPath?: string;
+    coverPath?: string;
+  }>();
 
-      const newChat = createChat(title, {
-        topic: title,
-        genre,
-        bpm: 120,
-      });
-      const targetDir = path.join(getChatsDir(), newChat.folderName);
-      fs.copyFileSync(item.fullPath, path.join(targetDir, `${newChat.folderName}_v1.mid`));
-
-      const sourceLrc = item.fullPath.replace(/\.mid$/, '.lrc');
-      let lyricsMap: Record<string, string[]> = {};
-      let lrcFileName = '';
-      if (fs.existsSync(sourceLrc)) {
-        lrcFileName = `${newChat.folderName}_v1.lrc`;
-        fs.copyFileSync(sourceLrc, path.join(targetDir, lrcFileName));
-        const lrcContent = fs.readFileSync(sourceLrc, 'utf-8');
-        lyricsMap = parseLrcToLyricsMap(lrcContent);
-      } else {
-        lyricsMap = { 'Lyrics': ['[Instrumental composition]'] };
-      }
-
-      newChat.lyrics = lyricsMap;
-
-      const sourceMp3 = item.fullPath.replace(/\.mid$/, '.mp3');
-      const targetMp3 = `${newChat.folderName}_v1.mp3`;
-      const targetMp3Path = path.join(targetDir, targetMp3);
-
-      if (fs.existsSync(sourceMp3)) {
-        fs.copyFileSync(sourceMp3, targetMp3Path);
-      } else {
-        try {
-          await renderMidiToAudio(item.fullPath, targetMp3Path);
-        } catch (e) {
-          console.warn(`Could not render audio for auto-intake ${title}:`, e);
-        }
-      }
-
-      newChat.versions.push({
-        version: 'v1',
-        createdAt: new Date().toISOString(),
-        bpm: 120,
-        key: 'C',
-        midiFile: `${newChat.folderName}_v1.mid`,
-        mp3File: targetMp3,
-        leadSheetFile: lrcFileName,
-        durationSec: 180,
-        notes: `Auto-imported from outputs/${item.relPath}`,
-      });
-      saveChat(newChat);
-      broadcastEvent({
-        type: 'chats_updated',
-        message: `Auto-imported project: "${title}" (${genre})`,
-        payload: { id: newChat.id, name: title },
+  for (const item of allEntries) {
+    const key = `${item.dirName}:::${item.baseName.toLowerCase()}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        baseName: item.baseName,
+        dirName: item.dirName,
+        relPath: item.relPath,
+        title: item.baseName.replace(/[_-]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
       });
     }
+
+    const grp = groups.get(key)!;
+    if (item.ext === '.mid' || item.ext === '.midi') {
+      grp.midPath = item.fullPath;
+    } else if (['.mp3', '.wav', '.flac', '.ogg'].includes(item.ext)) {
+      grp.audioPath = item.fullPath;
+    } else if (item.ext === '.lrc' || item.ext === '.txt') {
+      grp.lrcPath = item.fullPath;
+    } else if (['.jpg', '.jpeg', '.png', '.webp'].includes(item.ext)) {
+      grp.coverPath = item.fullPath;
+    }
+  }
+
+  const existingChats = listChats();
+
+  for (const group of groups.values()) {
+    // Requires at least one audio or MIDI asset
+    if (!group.midPath && !group.audioPath) continue;
+
+    const existing = existingChats.find(
+      c => c.folderName.startsWith(group.baseName) || c.name.toLowerCase() === group.title.toLowerCase()
+    );
+    if (existing) continue;
+
+    let genre = 'pop';
+    const lowerDir = group.dirName.toLowerCase();
+    if (lowerDir.includes('indian')) genre = 'indian';
+    else if (lowerDir.includes('rock')) genre = 'rock';
+    else if (lowerDir.includes('phonk')) genre = 'phonk';
+    else if (lowerDir.includes('electronic')) genre = 'electronic';
+    else if (lowerDir.includes('hip-hop') || lowerDir.includes('rap')) genre = 'hip-hop';
+
+    const newChat = createChat(group.title, {
+      topic: group.title,
+      genre,
+      bpm: 120,
+    });
+    const targetDir = path.join(getChatsDir(), newChat.folderName);
+    const targetMp3 = `${newChat.folderName}_v1.mp3`;
+    const targetMp3Path = path.join(targetDir, targetMp3);
+    const targetMid = `${newChat.folderName}_v1.mid`;
+    const targetMidPath = path.join(targetDir, targetMid);
+
+    // Copy or transcode MIDI
+    if (group.midPath && fs.existsSync(group.midPath)) {
+      fs.copyFileSync(group.midPath, targetMidPath);
+    }
+
+    // Audio file resolution
+    if (group.audioPath && fs.existsSync(group.audioPath)) {
+      if (group.audioPath.endsWith('.mp3')) {
+        fs.copyFileSync(group.audioPath, targetMp3Path);
+      } else {
+        // Transcode non-MP3 audio to MP3 using ffmpeg
+        try {
+          await execFileAsync('ffmpeg', ['-y', '-i', group.audioPath, '-b:a', '192k', targetMp3Path]);
+        } catch (_) {
+          fs.copyFileSync(group.audioPath, targetMp3Path);
+        }
+      }
+    } else if (group.midPath) {
+      try {
+        await renderMidiToAudio(group.midPath, targetMp3Path);
+      } catch (e) {
+        console.warn(`Could not render audio for auto-intake ${group.title}:`, e);
+      }
+    }
+
+    // Lyrics resolution
+    let lyricsMap: Record<string, string[]> = {};
+    let lrcFileName = '';
+    if (group.lrcPath && fs.existsSync(group.lrcPath)) {
+      lrcFileName = `${newChat.folderName}_v1.lrc`;
+      fs.copyFileSync(group.lrcPath, path.join(targetDir, lrcFileName));
+      const lrcContent = fs.readFileSync(group.lrcPath, 'utf-8');
+      lyricsMap = parseLrcToLyricsMap(lrcContent);
+    } else if (fs.existsSync(targetMp3Path)) {
+      const embedded = extractEmbeddedId3(targetMp3Path);
+      if (embedded.lyrics) {
+        lrcFileName = `${newChat.folderName}_v1.lrc`;
+        fs.writeFileSync(path.join(targetDir, lrcFileName), embedded.lyrics, 'utf-8');
+        lyricsMap = parseLrcToLyricsMap(embedded.lyrics);
+      } else {
+        lyricsMap = { 'Lyrics': ['[Ready for lyrics synchronization]'] };
+      }
+    } else {
+      lyricsMap = { 'Lyrics': ['[Ready for lyrics synchronization]'] };
+    }
+    newChat.lyrics = lyricsMap;
+
+    // Cover art resolution
+    if (group.coverPath && fs.existsSync(group.coverPath)) {
+      fs.copyFileSync(group.coverPath, path.join(targetDir, 'cover.jpg'));
+    } else if (fs.existsSync(targetMp3Path)) {
+      const embedded = extractEmbeddedId3(targetMp3Path);
+      if (embedded.cover) {
+        fs.writeFileSync(path.join(targetDir, 'cover.jpg'), embedded.cover);
+      }
+    }
+
+    // Real duration detection
+    let durationSec = 180;
+    try {
+      if (fs.existsSync(targetMp3Path)) {
+        const durCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${targetMp3Path}"`;
+        const durOut = await execFileAsync('sh', ['-c', durCmd]);
+        const parsedDur = parseFloat(durOut.stdout.trim());
+        if (!isNaN(parsedDur) && parsedDur > 0) durationSec = Math.round(parsedDur);
+      }
+    } catch (_) {}
+
+    newChat.versions.push({
+      version: 'v1',
+      createdAt: new Date().toISOString(),
+      bpm: 120,
+      key: 'C',
+      midiFile: fs.existsSync(targetMidPath) ? targetMid : '',
+      mp3File: fs.existsSync(targetMp3Path) ? targetMp3 : '',
+      leadSheetFile: lrcFileName,
+      durationSec,
+      notes: `Auto-imported from outputs/${group.relPath}`,
+    });
+
+    saveChat(newChat);
+    broadcastEvent({
+      type: 'chats_updated',
+      message: `Auto-imported external project: "${group.title}" (${genre})`,
+      payload: { id: newChat.id, name: group.title },
+    });
   }
 }
 
@@ -1480,9 +1663,9 @@ function setupFileWatchers() {
   const outputsDir = path.resolve(process.cwd(), 'outputs');
   try {
     if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir, { recursive: true });
-    fs.watch(outputsDir, (eventType, filename) => {
+    fs.watch(outputsDir, { recursive: true }, (eventType, filename) => {
       if (!filename) return;
-      if (filename.endsWith('.mid') || filename.endsWith('.lrc')) {
+      if (/\.(mid|midi|mp3|wav|flac|ogg|lrc|txt|jpg|png|json)$/i.test(filename)) {
         if (watchDebounceTimer) clearTimeout(watchDebounceTimer);
         watchDebounceTimer = setTimeout(() => {
           autoIntakeOutputs();

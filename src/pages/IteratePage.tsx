@@ -200,6 +200,11 @@ export const IteratePage: React.FC = () => {
         }),
       });
 
+      if (!codeRes.ok) {
+        const err = await codeRes.json();
+        throw new Error(err.error || 'Failed to generate cover arrangement code');
+      }
+
       const codeData = await codeRes.json();
 
       const renderRes = await fetch('/api/ai/code/render', {

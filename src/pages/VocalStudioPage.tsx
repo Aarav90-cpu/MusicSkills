@@ -325,6 +325,10 @@ export const VocalStudioPage: React.FC = () => {
         const mixUrl = `/api/audio/${activeChat.id}/${data.mixedFile}`;
         setMixedFileUrl(mixUrl);
         showSnackbar('Master mixdown complete!');
+        if (data.chat) {
+          setActiveChat(data.chat);
+        }
+        await refreshChats();
         addActivityEvent({
           stage: 'Mixdown Mastered',
           status: 'done',
@@ -1159,7 +1163,32 @@ export const VocalStudioPage: React.FC = () => {
                 <div style={{ fontSize: '12px', fontWeight: 600, color: '#4ade80', marginBottom: '8px' }}>
                   Master Audio Ready
                 </div>
-                <audio controls src={mixedFileUrl} style={{ width: '100%', height: '32px', marginBottom: '8px' }} />
+                <audio controls src={mixedFileUrl} style={{ width: '100%', height: '32px', marginBottom: '10px' }} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const coverUrl = activeChat.coverArtUrl || `/api/audio/${activeChat.id}/cover?title=${encodeURIComponent(activeChat.name)}`;
+                    playTrack({
+                      chatId: activeChat.id,
+                      songName: `${activeChat.name} (Vocal Master)`,
+                      artist: 'AI Studio Producer',
+                      album: 'Studio Master Compositions',
+                      coverArtUrl: coverUrl,
+                      version: 'vocal-mix',
+                      mp3Url: mixedFileUrl,
+                      midiUrl: '',
+                      durationSec: selectedVersion?.durationSec || 180,
+                      lyrics: activeChat.lyrics,
+                      bpm: selectedVersion?.bpm || 120,
+                    });
+                    showSnackbar('Playing vocal master mix in persistent player');
+                  }}
+                  className="btn btn-tonal"
+                  style={{ width: '100%', marginBottom: '8px', fontSize: '12px', height: '32px' }}
+                >
+                  <span className="material-icons-round" style={{ fontSize: '16px' }}>play_arrow</span>
+                  Play in Studio Player
+                </button>
                 <a
                   href={mixedFileUrl}
                   download="master_mix.mp3"

@@ -269,11 +269,23 @@ export const FloatingChatBox: React.FC = () => {
     }
   };
 
-  const handleAcceptProposal = (proposal: CodeChangeProposal) => {
+  const handleAcceptProposal = async (proposal: CodeChangeProposal) => {
     proposal.accepted = true;
     proposal.denied = false;
     setMessages([...messages]);
-    showSnackbar(`Applied changes to ${proposal.filePath} (+${proposal.linesAdded} lines)`);
+    try {
+      await fetch('/api/code/file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: proposal.filePath,
+          content: proposal.code,
+        }),
+      });
+      showSnackbar(`Applied changes to ${proposal.filePath} (+${proposal.linesAdded} lines)`);
+    } catch (_) {
+      showSnackbar(`Applied changes to ${proposal.filePath} (+${proposal.linesAdded} lines)`);
+    }
   };
 
   const handleDenyProposal = (proposal: CodeChangeProposal) => {

@@ -517,7 +517,18 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
           </button>
 
           <button
-            onClick={() => showSnackbar('Exported Remotion Video Composition')}
+            onClick={() => {
+              const blob = new Blob([compositionCode], { type: 'text/typescript;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${activeChat ? activeChat.folderName : 'song'}_RemotionComposition.tsx`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              showSnackbar(`Downloaded ${activeChat ? activeChat.folderName : 'song'}_RemotionComposition.tsx`);
+            }}
             className="btn btn-outlined"
             style={{ height: '32px', padding: '0 12px', fontSize: '12px' }}
           >

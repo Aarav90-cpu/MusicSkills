@@ -4,6 +4,7 @@ import {
   loadStudioStats,
   loadPlaylists,
   createPlaylist,
+  addTrackToPlaylist,
   removeTrackFromPlaylist,
   deletePlaylist,
   toggleFavoriteTrack,
@@ -293,6 +294,42 @@ export const StatsPage: React.FC = () => {
       showSnackbar(`Lyrics cached from LRCLIB for "${track.title}"!`);
     } catch (err: any) {
       showSnackbar(`LRCLIB error: ${err.message}`);
+    }
+  };
+
+  // Add Track to Playlist Handler
+  const handleAddTrackToPlaylist = (track: LibraryTrack, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (playlists.length === 0) {
+      const name = window.prompt(`Create new playlist to add "${track.title}":`, 'My Favorites');
+      if (name && name.trim()) {
+        const pl = createPlaylist(name.trim());
+        addTrackToPlaylist(pl.id, track.id);
+        setPlaylists(loadPlaylists());
+        showSnackbar(`Created playlist "${pl.name}" and added "${track.title}"!`);
+      }
+      return;
+    }
+
+    const playlistOptions = playlists.map((p, idx) => `${idx + 1}. ${p.name}`).join('\n');
+    const choice = window.prompt(
+      `Add "${track.title}" to playlist:\n\n${playlistOptions}\n\nEnter playlist number (1-${playlists.length}) or enter a new playlist name:`,
+      '1'
+    );
+    if (!choice || !choice.trim()) return;
+
+    const trimmed = choice.trim();
+    const num = parseInt(trimmed, 10);
+    if (!isNaN(num) && num >= 1 && num <= playlists.length) {
+      const targetPl = playlists[num - 1];
+      addTrackToPlaylist(targetPl.id, track.id);
+      setPlaylists(loadPlaylists());
+      showSnackbar(`Added "${track.title}" to playlist "${targetPl.name}"!`);
+    } else {
+      const pl = createPlaylist(trimmed);
+      addTrackToPlaylist(pl.id, track.id);
+      setPlaylists(loadPlaylists());
+      showSnackbar(`Created playlist "${pl.name}" and added "${track.title}"!`);
     }
   };
 
@@ -598,24 +635,28 @@ export const StatsPage: React.FC = () => {
                           fontSize: '10px',
                           fontWeight: 700,
                           backgroundColor:
-                            resolved.source === 'embedded_synced' || resolved.source === 'embedded_static'
-                              ? 'rgba(40, 200, 100, 0.25)'
+                            resolved.source === 'embedded_synced'
+                              ? 'rgba(0, 230, 118, 0.25)'
+                              : resolved.source === 'embedded_static'
+                              ? 'rgba(0, 176, 255, 0.25)'
                               : resolved.source === 'local_synced'
-                              ? 'rgba(60, 196, 178, 0.2)'
+                              ? 'rgba(40, 200, 100, 0.2)'
                               : resolved.source === 'online_synced'
-                              ? 'rgba(183, 166, 255, 0.2)'
+                              ? 'rgba(60, 196, 178, 0.2)'
                               : resolved.source === 'offline_static'
                               ? 'rgba(255, 176, 32, 0.2)'
                               : resolved.source === 'online_static'
-                              ? 'rgba(183, 166, 255, 0.15)'
+                              ? 'rgba(183, 166, 255, 0.2)'
                               : 'var(--color-container)',
                           color:
-                            resolved.source === 'embedded_synced' || resolved.source === 'embedded_static'
-                              ? '#28c864'
+                            resolved.source === 'embedded_synced'
+                              ? '#00E676'
+                              : resolved.source === 'embedded_static'
+                              ? '#00B0FF'
                               : resolved.source === 'local_synced'
-                              ? '#3CC4B2'
+                              ? '#28c864'
                               : resolved.source === 'online_synced'
-                              ? '#B7A6FF'
+                              ? '#3CC4B2'
                               : resolved.source === 'offline_static'
                               ? '#FFB020'
                               : resolved.source === 'online_static'
@@ -630,21 +671,33 @@ export const StatsPage: React.FC = () => {
                         {resolved.source === 'embedded_synced'
                           ? 'P1 Engraved Synced'
                           : resolved.source === 'embedded_static'
-                          ? 'P1 Engraved Lyrics'
+                          ? 'P2 Engraved Static'
                           : resolved.source === 'local_synced'
-                          ? 'P2 Local Synced'
+                          ? 'P3 Local Synced'
                           : resolved.source === 'online_synced'
-                          ? 'P3 Online Cached'
+                          ? 'P4 Online Synced'
                           : resolved.source === 'offline_static'
-                          ? 'P4 Local Static'
+                          ? 'P5 Local Static'
                           : resolved.source === 'online_static'
-                          ? 'P5 Online Static'
+                          ? 'P6 Online Static'
                           : 'No Lyrics'}
                       </span>
                     </div>
 
                     {/* Actions */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                      {/* Add to Playlist */}
+                      <button
+                        onClick={e => handleAddTrackToPlaylist(track, e)}
+                        className="btn-text"
+                        style={{ width: '28px', height: '28px', padding: 0 }}
+                        title="Add track to playlist"
+                      >
+                        <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-text-secondary)' }}>
+                          playlist_add
+                        </span>
+                      </button>
+
                       {/* Force LRCLIB */}
                       <button
                         onClick={e => handleQuickForceLRCLib(track, e)}

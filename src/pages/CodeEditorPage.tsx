@@ -467,7 +467,8 @@ export const CodeEditorPage: React.FC = () => {
               onClick={() => {
                 setOriginalContent(codeContent);
                 setDiffStats(null);
-                showSnackbar('Accepted code changes');
+                handleSave();
+                showSnackbar('Accepted and saved code changes');
               }}
               className="btn btn-outlined"
               style={{ height: '26px', padding: '0 8px', fontSize: '11px' }}
