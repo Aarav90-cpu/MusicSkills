@@ -20,7 +20,7 @@ export interface AppConfig {
   defaultBpm: number;
   defaultKey: string;
   autoFetchLyrics: boolean;
-  lyricsPriority: Array<'local_synced' | 'online_synced' | 'offline_static' | 'online_static'>;
+  lyricsPriority: Array<'embedded_synced' | 'local_synced' | 'online_synced' | 'embedded_static' | 'local_static' | 'online_static' | 'offline_static'>;
   customSettings: Record<string, any>;
   lastSaved: string;
 }
@@ -64,7 +64,7 @@ const DEFAULT_CONFIG: AppConfig = {
   defaultBpm: 120,
   defaultKey: 'C',
   autoFetchLyrics: true,
-  lyricsPriority: ['local_synced', 'online_synced', 'offline_static', 'online_static'],
+  lyricsPriority: ['embedded_synced', 'local_synced', 'online_synced', 'embedded_static', 'local_static', 'online_static'],
   customSettings: {},
   lastSaved: new Date().toISOString(),
 };

@@ -63,6 +63,7 @@ export const HomePage: React.FC = () => {
   const handlePlaySong = (e: React.MouseEvent, chat: ChatSession) => {
     e.stopPropagation();
     const artist = chat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer';
+    const coverArtUrl = chat.coverArtUrl || `/api/audio/${chat.id}/cover?title=${encodeURIComponent(chat.name)}`;
     if (chat.versions.length > 0) {
       const latest = chat.versions[chat.versions.length - 1];
       const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${chat.folderName}_${latest.version || 'v1'}.mp3`);
@@ -71,6 +72,7 @@ export const HomePage: React.FC = () => {
         songName: chat.name,
         artist,
         album: `${chat.style?.genre || 'Pop'} Studio Masters`,
+        coverArtUrl,
         version: latest.version,
         mp3Url: `/api/audio/${chat.id}/${mp3File}`,
         midiUrl: latest.midiFile ? `/api/audio/${chat.id}/${latest.midiFile}` : '',
@@ -85,6 +87,7 @@ export const HomePage: React.FC = () => {
         songName: chat.name,
         artist,
         album: `${chat.style?.genre || 'Pop'} Studio Masters`,
+        coverArtUrl,
         version: 'v1',
         mp3Url: `/api/audio/${chat.id}/${chat.folderName}_v1.mp3`,
         midiUrl: '',
@@ -410,11 +413,13 @@ export const HomePage: React.FC = () => {
                         setRoute('lyrics');
                         if (hasVersion && latestVersion) {
                           const mp3File = latestVersion.mp3File || (latestVersion.midiFile ? latestVersion.midiFile.replace(/\.mid$/, '.mp3') : `${chat.folderName}_${latestVersion.version || 'v1'}.mp3`);
+                          const coverArtUrl = chat.coverArtUrl || `/api/audio/${chat.id}/cover?title=${encodeURIComponent(chat.name)}`;
                           playTrack({
                             chatId: chat.id,
                             songName: chat.name,
                             artist: chat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer',
                             album: `${chat.style?.genre || 'Pop'} Studio Masters`,
+                            coverArtUrl,
                             version: latestVersion.version,
                             mp3Url: `/api/audio/${chat.id}/${mp3File}`,
                             midiUrl: latestVersion.midiFile ? `/api/audio/${chat.id}/${latestVersion.midiFile}` : '',

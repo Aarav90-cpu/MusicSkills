@@ -272,7 +272,7 @@ export const ScrollingLyricsPage: React.FC = () => {
         chatId: `custom-${Date.now()}`,
         songName: title,
         artist,
-        coverArtUrl: meta.coverArtUrl,
+        coverArtUrl: meta.coverArtDataUrl || meta.coverArtUrl,
         version: 'Custom Take',
         mp3Url: url,
         midiUrl: '',

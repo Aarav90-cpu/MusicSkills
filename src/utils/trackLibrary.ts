@@ -96,6 +96,15 @@ const LYRICS_CACHE_KEY = 'musicskills_lyrics_cache_v1';
 const liveBlobMap = new Map<string, string>();
 const liveFileMap = new Map<string, File>();
 
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
 export function getLiveAudioUrl(trackId: string): string | null {
   return liveBlobMap.get(trackId) || null;
 }
@@ -523,14 +532,17 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
 
     // Match Cover Art (embedded ID3 metadata is MAIN PRIORITY!)
     let coverArtUrl: string | undefined = id3Meta.coverArtDataUrl || id3Meta.coverArtUrl;
-    if (!coverArtUrl) {
-      // Fallback to companion image in folder only if audio does not contain embedded art
-      const companionImg = imageMap.get(dir) || imageMap.get(fullKey) || imageMap.get(baseName.toLowerCase());
-      if (companionImg) {
+    const companionImg = imageMap.get(dir) || imageMap.get(fullKey) || imageMap.get(baseName.toLowerCase());
+
+    if (!coverArtUrl && companionImg) {
+      // Fallback to companion image in folder if audio does not contain embedded art
+      try {
+        coverArtUrl = await fileToDataUrl(companionImg);
+      } catch (_) {
         coverArtUrl = URL.createObjectURL(companionImg);
-        matchedCoverCount++;
       }
-    } else {
+      matchedCoverCount++;
+    } else if (coverArtUrl) {
       matchedCoverCount++;
     }
 
@@ -551,6 +563,11 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       formData.append('genre', id3Meta.genre || 'pop');
       formData.append('bpm', '120');
       formData.append('durationSec', (durationSec || 180).toString());
+
+      // Send companion cover image to server if present
+      if (companionImg) {
+        formData.append('cover', companionImg);
+      }
 
       // Send engraved lyrics (Priority 1) or companion LRC to server
       const syncedToSend = id3Meta.embeddedSyncedLyrics || localSyncedLyrics;

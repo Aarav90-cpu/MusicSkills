@@ -294,7 +294,7 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
             labelRadius * 2
           );
         } else {
-          // Gradient label placeholder
+          // Default gradient vinyl label when image is not present
           const labelGrad = ctx.createLinearGradient(-labelRadius, -labelRadius, labelRadius, labelRadius);
           labelGrad.addColorStop(0, '#6E44FF');
           labelGrad.addColorStop(1, '#3CC4B2');

@@ -18,9 +18,11 @@
   "defaultKey": "C",
   "autoFetchLyrics": true,
   "lyricsPriority": [
+    "embedded_synced",
     "local_synced",
     "online_synced",
-    "offline_static",
+    "embedded_static",
+    "local_static",
     "online_static"
   ],
   "customSettings": {},

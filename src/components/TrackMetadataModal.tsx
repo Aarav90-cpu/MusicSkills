@@ -46,7 +46,9 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
     track.customTags ? [...track.customTags] : []
   );
 
-  // Lyrics Fields
+  // Lyrics Fields (6-Tier Architecture)
+  const [embeddedSyncedLyrics, setEmbeddedSyncedLyrics] = useState(track.embeddedSyncedLyrics || '');
+  const [embeddedStaticLyrics, setEmbeddedStaticLyrics] = useState(track.embeddedStaticLyrics || '');
   const [localSyncedLyrics, setLocalSyncedLyrics] = useState(track.localSyncedLyrics || '');
   const [offlineStaticLyrics, setOfflineStaticLyrics] = useState(track.offlineStaticLyrics || '');
   const [onlineSyncedLyrics, setOnlineSyncedLyrics] = useState(track.onlineSyncedLyrics || '');
@@ -73,6 +75,8 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
     setNotes(track.notes || '');
     setCoverArtUrl(track.coverArtUrl || '');
     setCustomTags(track.customTags ? [...track.customTags] : []);
+    setEmbeddedSyncedLyrics(track.embeddedSyncedLyrics || '');
+    setEmbeddedStaticLyrics(track.embeddedStaticLyrics || '');
     setLocalSyncedLyrics(track.localSyncedLyrics || '');
     setOfflineStaticLyrics(track.offlineStaticLyrics || '');
     setOnlineSyncedLyrics(track.onlineSyncedLyrics || '');
@@ -86,6 +90,8 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
     title,
     artist,
     album,
+    embeddedSyncedLyrics,
+    embeddedStaticLyrics,
     localSyncedLyrics,
     onlineSyncedLyrics,
     offlineStaticLyrics,
@@ -127,7 +133,7 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
     setIsFetchingLrc(true);
     setStatusMessage('Querying LRCLIB API with User-Agent...');
     try {
-      const dummyTrack: LibraryTrack = {
+      const activeTrackSnapshot: LibraryTrack = {
         ...track,
         title,
         artist,
@@ -135,7 +141,7 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
         durationSec: track.durationSec,
       };
 
-      const updated = await fetchAndCacheLyricsForTrack(dummyTrack, true);
+      const updated = await fetchAndCacheLyricsForTrack(activeTrackSnapshot, true);
       if (updated.onlineSyncedLyrics) {
         setOnlineSyncedLyrics(updated.onlineSyncedLyrics);
         setStatusMessage('Success: Fetched and cached synchronized lyrics from LRCLIB.');
@@ -173,6 +179,8 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
       notes: notes.trim() || undefined,
       coverArtUrl: coverArtUrl || undefined,
       customTags: customTags.filter(t => t.key.trim().length > 0),
+      embeddedSyncedLyrics: embeddedSyncedLyrics.trim() || undefined,
+      embeddedStaticLyrics: embeddedStaticLyrics.trim() || undefined,
       localSyncedLyrics: localSyncedLyrics.trim() || undefined,
       offlineStaticLyrics: offlineStaticLyrics.trim() || undefined,
       onlineSyncedLyrics: onlineSyncedLyrics.trim() || undefined,
@@ -233,7 +241,7 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
               Edit Song Metadata & Lyrics
             </h2>
             <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '4px 0 0 0' }}>
-              Modify title, artist, smart album grouping, cover art, custom tags, and 4-tier lyrics.
+              Modify title, artist, smart album grouping, cover art, custom tags, and 6-tier lyrics.
             </p>
           </div>
           <button
@@ -550,12 +558,12 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
             )}
           </div>
 
-          {/* SECTOR 5: 4-TIER LYRICS RESOLUTION & CACHE */}
+          {/* SECTOR 5: 6-TIER LYRICS RESOLUTION & CACHE */}
           <div style={{ borderTop: '1px solid var(--color-outline)', paddingTop: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <div>
                 <h3 style={{ fontSize: '14px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-primary)', margin: 0 }}>
-                  Sector 5: 4-Tier Lyrics Engine & Cache
+                  Sector 5: 6-Tier Lyrics Engine & Cache
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Active Resolution:</span>
@@ -565,7 +573,11 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
                       fontSize: '11px',
                       fontWeight: 700,
                       backgroundColor:
-                        resolved.source === 'local_synced'
+                        resolved.source === 'embedded_synced'
+                          ? 'rgba(0, 230, 118, 0.25)'
+                          : resolved.source === 'embedded_static'
+                          ? 'rgba(0, 176, 255, 0.25)'
+                          : resolved.source === 'local_synced'
                           ? 'rgba(40, 200, 100, 0.2)'
                           : resolved.source === 'online_synced'
                           ? 'rgba(60, 196, 178, 0.2)'
@@ -575,7 +587,11 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
                           ? 'rgba(183, 166, 255, 0.2)'
                           : 'var(--color-container)',
                       color:
-                        resolved.source === 'local_synced'
+                        resolved.source === 'embedded_synced'
+                          ? '#00E676'
+                          : resolved.source === 'embedded_static'
+                          ? '#00B0FF'
+                          : resolved.source === 'local_synced'
                           ? '#28c864'
                           : resolved.source === 'online_synced'
                           ? '#3CC4B2'
@@ -620,15 +636,46 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              {/* Priority 1: Local Synced */}
+            {/* Row 1: Priorities 1 & 2 (Engraved in Audio File) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-                  Priority 1: Local Synced (.lrc timestamps)
+                  Priority 1: Engraved Synced Lyrics (In Audio File)
                 </label>
                 <textarea
                   className="input-field"
-                  rows={6}
+                  rows={4}
+                  value={embeddedSyncedLyrics}
+                  onChange={e => setEmbeddedSyncedLyrics(e.target.value)}
+                  placeholder="[00:12.45]Engraved synced lyric line from SYLT/USLT..."
+                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', padding: '8px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                  Priority 2: Engraved Static Lyrics (In Audio File)
+                </label>
+                <textarea
+                  className="input-field"
+                  rows={4}
+                  value={embeddedStaticLyrics}
+                  onChange={e => setEmbeddedStaticLyrics(e.target.value)}
+                  placeholder="Engraved plain lyric text from USLT..."
+                  style={{ width: '100%', fontSize: '12px', padding: '8px' }}
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Priorities 3 & 5 (Local Companion Files) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                  Priority 3: Local Companion Synced (.lrc file)
+                </label>
+                <textarea
+                  className="input-field"
+                  rows={5}
                   value={localSyncedLyrics}
                   onChange={e => setLocalSyncedLyrics(e.target.value)}
                   placeholder="[00:12.45]First synced line&#10;[00:16.80]Second synced line..."
@@ -636,14 +683,13 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
                 />
               </div>
 
-              {/* Priority 3: Offline Static */}
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-                  Priority 3: Offline Static (Plain Text)
+                  Priority 5: Local Companion Static (.txt file)
                 </label>
                 <textarea
                   className="input-field"
-                  rows={6}
+                  rows={5}
                   value={offlineStaticLyrics}
                   onChange={e => setOfflineStaticLyrics(e.target.value)}
                   placeholder="First plain lyric line&#10;Second plain lyric line..."
@@ -652,12 +698,12 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
               </div>
             </div>
 
-            {/* Online Cached Preview */}
+            {/* Row 3: Priorities 4 & 6 (Persistent Online Cache from LRCLIB) */}
             {(onlineSyncedLyrics || onlineStaticLyrics) && (
               <div style={{ marginTop: '14px', padding: '12px', backgroundColor: 'var(--color-container)', borderRadius: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                    Persistent Online Cache (Priorities 2 & 4)
+                    Persistent Online Cache (Priorities 4 & 6: LRCLIB)
                   </span>
                   <button
                     onClick={() => {

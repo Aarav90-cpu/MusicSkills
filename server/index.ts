@@ -316,7 +316,11 @@ app.post('/api/projects/import', upload.single('file'), async (req, res) => {
   }
 });
 
-app.post('/api/custom-song/import', upload.fields([{ name: 'audio', maxCount: 1 }, { name: 'lrc', maxCount: 1 }]), async (req, res) => {
+app.post('/api/custom-song/import', upload.fields([
+  { name: 'audio', maxCount: 1 },
+  { name: 'lrc', maxCount: 1 },
+  { name: 'cover', maxCount: 1 }
+]), async (req, res) => {
   const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
   const audioFile = files?.['audio']?.[0];
   if (!audioFile) {
@@ -325,6 +329,7 @@ app.post('/api/custom-song/import', upload.fields([{ name: 'audio', maxCount: 1 
 
   const { title = 'Custom Track', artist = '', album = '', genre = 'pop', bpm = '120', durationSec = '180' } = req.body;
   const lrcFile = files?.['lrc']?.[0];
+  const coverFile = files?.['cover']?.[0];
   const lrcContent = lrcFile ? lrcFile.buffer.toString('utf-8') : (req.body.lrcText || '');
 
   try {
@@ -338,6 +343,7 @@ app.post('/api/custom-song/import', upload.fields([{ name: 'audio', maxCount: 1 
       audioBuffer: audioFile.buffer,
       audioOriginalName: audioFile.originalname,
       lrcContent,
+      coverBuffer: coverFile ? coverFile.buffer : undefined,
     });
 
     res.status(201).json({ success: true, chat: newChat });

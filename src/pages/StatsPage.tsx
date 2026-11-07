@@ -336,7 +336,7 @@ export const StatsPage: React.FC = () => {
             </h1>
           </div>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '13px', margin: 0 }}>
-            Manage generated and folder-imported tracks, smart albums, 4-tier synced lyrics cache, and true session analytics.
+            Manage generated and folder-imported tracks, smart albums, 6-tier synced lyrics cache, and true session analytics.
           </p>
         </div>
 

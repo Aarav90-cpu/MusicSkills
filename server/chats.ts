@@ -416,6 +416,73 @@ export function extractEmbeddedId3(bufferOrPath: Buffer | string): { cover?: Buf
             mime = detectedMime;
           }
         } catch (_) {}
+      } else if ((frameId === 'SYLT' || frameId === 'SLT') && frameData.length > 6) {
+        try {
+          const enc = frameData[0];
+          const tsFormat = frameData[4]; // 2 = milliseconds, 1 = MPEG frames
+          let descEnd = 6;
+          if (enc === 1 || enc === 2) {
+            while (descEnd + 1 < frameData.length) {
+              if (frameData[descEnd] === 0 && frameData[descEnd + 1] === 0) {
+                descEnd += 2;
+                break;
+              }
+              descEnd += 2;
+            }
+          } else {
+            while (descEnd < frameData.length && frameData[descEnd] !== 0) {
+              descEnd++;
+            }
+            descEnd++;
+          }
+
+          let p = descEnd;
+          const lines: { timeSec: number; text: string }[] = [];
+          while (p < frameData.length) {
+            let textEnd = p;
+            if (enc === 1 || enc === 2) {
+              while (textEnd + 1 < frameData.length && !(frameData[textEnd] === 0 && frameData[textEnd + 1] === 0)) {
+                textEnd += 2;
+              }
+            } else {
+              while (textEnd < frameData.length && frameData[textEnd] !== 0) {
+                textEnd++;
+              }
+            }
+            if (textEnd >= frameData.length) break;
+            const textBytes = frameData.subarray(p, textEnd);
+            let entryText = '';
+            if (enc === 1 || enc === 2) entryText = textBytes.toString('utf16le');
+            else if (enc === 3) entryText = textBytes.toString('utf-8');
+            else entryText = textBytes.toString('latin1');
+            entryText = entryText.trim();
+
+            const afterText = enc === 1 || enc === 2 ? textEnd + 2 : textEnd + 1;
+            if (afterText + 4 <= frameData.length) {
+              const rawTs = (frameData[afterText] << 24) | (frameData[afterText + 1] << 16) | (frameData[afterText + 2] << 8) | frameData[afterText + 3];
+              const timeSec = tsFormat === 2 ? rawTs / 1000 : rawTs / 38.28;
+              if (entryText) {
+                lines.push({ timeSec, text: entryText });
+              }
+              p = afterText + 4;
+            } else {
+              break;
+            }
+          }
+
+          if (lines.length > 0) {
+            const lrcLines = lines.map(l => {
+              const m = Math.floor(l.timeSec / 60);
+              const s = Math.floor(l.timeSec % 60);
+              const cs = Math.floor((l.timeSec % 1) * 100);
+              const mm = m.toString().padStart(2, '0');
+              const ss = s.toString().padStart(2, '0');
+              const xx = cs.toString().padStart(2, '0');
+              return `[${mm}:${ss}.${xx}] ${l.text}`;
+            });
+            lyrics = lrcLines.join('\n');
+          }
+        } catch (_) {}
       } else if ((frameId === 'USLT' || frameId === 'ULT') && !lyrics && frameData.length > 5) {
         try {
           const enc = frameData[0];
@@ -472,8 +539,9 @@ export async function importCustomSong(params: {
   audioBuffer: Buffer;
   audioOriginalName: string;
   lrcContent?: string;
+  coverBuffer?: Buffer;
 }): Promise<ChatSession> {
-  const { title, artist, album, genre = 'pop', bpm = 120, durationSec = 180, audioBuffer, audioOriginalName, lrcContent } = params;
+  const { title, artist, album, genre = 'pop', bpm = 120, durationSec = 180, audioBuffer, audioOriginalName, lrcContent, coverBuffer } = params;
   const newChat = createChat(title, {
     topic: title,
     description: artist ? (album ? `${artist} · ${album}` : `Custom import by ${artist}`) : 'Custom song import',
@@ -489,10 +557,12 @@ export async function importCustomSong(params: {
   const audioFileName = `v1_custom${ext}`;
   fs.writeFileSync(path.join(dirPath, audioFileName), audioBuffer);
 
-  // Extract embedded ID3 metadata (APIC cover art and USLT lyrics)
+  // Extract embedded ID3 metadata (APIC cover art and USLT/SYLT lyrics)
   const embedded = extractEmbeddedId3(audioBuffer);
   if (embedded.cover) {
     fs.writeFileSync(path.join(dirPath, 'cover.jpg'), embedded.cover);
+  } else if (coverBuffer && coverBuffer.length > 0) {
+    fs.writeFileSync(path.join(dirPath, 'cover.jpg'), coverBuffer);
   }
 
   let lrcFileName = '';

@@ -267,6 +267,7 @@ export const CodeEditorPage: React.FC = () => {
           songName: activeChat?.name || 'Custom Master',
           artist: 'AI Studio Producer',
           album: 'Studio Master Compositions',
+          coverArtUrl: activeChat?.coverArtUrl || `/api/audio/${activeChatId}/cover?title=${encodeURIComponent(activeChat?.name || 'Custom Master')}`,
           version: data.version.version,
           mp3Url,
           midiUrl: `/api/audio/${activeChatId}/${data.version.midiFile}`,

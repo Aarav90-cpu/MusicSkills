@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 import { listChats, getChat, createChat, saveChat, sanitizeName, getChatsDir } from '../server/chats';
 import { renderSong } from '../server/audio';
 import { loadConfig } from '../server/config';
-import { parseLyricsOutput } from '../server/ai';
+import { parseLyricsOutput, fetchLRCLibReference } from '../server/ai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,8 +54,8 @@ MusicSkills External Agent CLI
 Autonomous bridge for Claude Code, Codex, Antigravity, and Terminal Producers.
 
 Usage:
+  ./bin/musicskills <command> [options]
   musicskills <command> [options]
-  node bin/musicskills.js <command> [options]
 
 Commands:
   new-project, create         Create a new project session registered in MusicSkills Studio
@@ -451,6 +451,62 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
             console.log(`   - ${v.version} (${v.durationSec}s) -> ${v.midiFile} ${v.mp3File ? `| ${v.mp3File}` : ''}`);
           }
           console.log(`Lyrics Sections (${Object.keys(res.chat.lyrics).length}): ${Object.keys(res.chat.lyrics).join(', ')}`);
+        }
+        break;
+      }
+
+      case 'fetch-lyrics': {
+        const projectId = args.id || args['project-id'] || args.p || args._[1];
+        if (!projectId) {
+          console.error('Error: --id or --project-id is required.');
+          process.exit(1);
+        }
+
+        const res = getChat(projectId);
+        if (!res) {
+          console.error(`Error: Project "${projectId}" not found.`);
+          process.exit(1);
+        }
+
+        const query = args.query || args.q || res.chat.name;
+        if (!args.json) {
+          console.log(`[MusicSkills] Fetching synchronized lyrics from LRCLIB for "${query}"...`);
+        }
+
+        const lyricsRef = await fetchLRCLibReference(query);
+        if (!lyricsRef) {
+          if (args.json) {
+            console.log(JSON.stringify({ success: false, message: 'No lyrics found on LRCLIB' }));
+          } else {
+            console.log(`[LRCLIB] No lyrics found matching query: "${query}"`);
+          }
+          break;
+        }
+
+        // Save lyrics to project
+        if (lyricsRef.syncedLyrics) {
+          const lrcPath = path.join(res.dirPath, 'v1_custom.lrc');
+          fs.writeFileSync(lrcPath, lyricsRef.syncedLyrics, 'utf-8');
+        }
+
+        const parsed = parseLyricsOutput(lyricsRef.lyricsText);
+        res.chat.lyrics = parsed;
+        res.chat.updatedAt = new Date().toISOString();
+        saveChat(res.chat);
+
+        if (args.json) {
+          console.log(JSON.stringify({
+            success: true,
+            trackName: lyricsRef.trackName,
+            artistName: lyricsRef.artistName,
+            hasSynced: Boolean(lyricsRef.syncedLyrics),
+            sections: Object.keys(parsed),
+          }, null, 2));
+        } else {
+          console.log(`[SUCCESS] Cached lyrics from LRCLIB:`);
+          console.log(`   Track:    "${lyricsRef.trackName}" by ${lyricsRef.artistName}`);
+          console.log(`   Type:     ${lyricsRef.syncedLyrics ? 'Synchronized (.lrc)' : 'Plain text'}`);
+          console.log(`   Sections: ${Object.keys(parsed).join(', ')}`);
         }
         break;
       }
