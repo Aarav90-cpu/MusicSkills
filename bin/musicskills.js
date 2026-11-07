@@ -516,13 +516,28 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
         const sfExists = fs.existsSync(config.soundfontPath);
         const chats = listChats();
 
-        console.log(`\n=== MusicSkills Studio & Agent Bridge Status ===`);
-        console.log(`Config File:       settings.json (Primary)`);
-        console.log(`Projects Directory: ${getChatsDir()} (${chats.length} projects)`);
-        console.log(`SoundFont Path:    ${config.soundfontPath} [${sfExists ? 'DETECTED' : 'MISSING'}]`);
-        console.log(`Active Provider:   ${config.provider} (${config.model})`);
-        console.log(`Web Studio URL:    http://localhost:3000`);
-        console.log(`CLI Agent Ready:   Yes (Claude Code, Codex, Antigravity)\n`);
+        if (args.json) {
+          console.log(JSON.stringify({
+            status: 'ready',
+            configFile: 'settings.json',
+            projectsDirectory: getChatsDir(),
+            projectsCount: chats.length,
+            soundfontPath: config.soundfontPath,
+            soundfontExists: sfExists,
+            activeProvider: config.provider,
+            activeModel: config.model,
+            webStudioUrl: 'http://localhost:3000',
+            cliAgentReady: true,
+          }, null, 2));
+        } else {
+          console.log(`\n=== MusicSkills Studio & Agent Bridge Status ===`);
+          console.log(`Config File:       settings.json (Primary)`);
+          console.log(`Projects Directory: ${getChatsDir()} (${chats.length} projects)`);
+          console.log(`SoundFont Path:    ${config.soundfontPath} [${sfExists ? 'DETECTED' : 'MISSING'}]`);
+          console.log(`Active Provider:   ${config.provider} (${config.model})`);
+          console.log(`Web Studio URL:    http://localhost:3000`);
+          console.log(`CLI Agent Ready:   Yes (Claude Code, Codex, Antigravity)\n`);
+        }
         break;
       }
 

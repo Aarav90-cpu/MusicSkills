@@ -413,7 +413,19 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               </div>
             ) : (
               <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '18px' }}>
-                {route === 'home' ? 'Song Library' : route === 'settings' ? 'Studio Settings' : 'MusicSkills'}
+                {route === 'home'
+                  ? 'Song Library'
+                  : route === 'settings'
+                  ? 'Studio Settings'
+                  : route === 'stats'
+                  ? 'Library, Playlists & Analytics'
+                  : route === 'code'
+                  ? 'Python Code Editor'
+                  : route === 'video'
+                  ? 'Remotion Music Video Studio'
+                  : route === 'lyrics'
+                  ? 'Stage Lyrics & Syncer'
+                  : 'MusicSkills Studio'}
               </span>
             )}
           </div>

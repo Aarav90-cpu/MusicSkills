@@ -63,7 +63,7 @@ export const HomePage: React.FC = () => {
   const handlePlaySong = (e: React.MouseEvent, chat: ChatSession) => {
     e.stopPropagation();
     const artist = chat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer';
-    const coverArtUrl = chat.coverArtUrl || `/api/audio/${chat.id}/cover?title=${encodeURIComponent(chat.name)}`;
+    const coverArtUrl = chat.coverArtUrl || `/api/audio/${encodeURIComponent(chat.id)}/cover?title=${encodeURIComponent(chat.name)}`;
     if (chat.versions.length > 0) {
       const latest = chat.versions[chat.versions.length - 1];
       const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${chat.folderName}_${latest.version || 'v1'}.mp3`);
@@ -74,8 +74,8 @@ export const HomePage: React.FC = () => {
         album: `${chat.style?.genre || 'Pop'} Studio Masters`,
         coverArtUrl,
         version: latest.version,
-        mp3Url: `/api/audio/${chat.id}/${mp3File}`,
-        midiUrl: latest.midiFile ? `/api/audio/${chat.id}/${latest.midiFile}` : '',
+        mp3Url: `/api/audio/${encodeURIComponent(chat.id)}/${encodeURIComponent(mp3File)}?title=${encodeURIComponent(chat.name)}`,
+        midiUrl: latest.midiFile ? `/api/audio/${encodeURIComponent(chat.id)}/${encodeURIComponent(latest.midiFile)}` : '',
         durationSec: latest.durationSec || 180,
         lyrics: chat.lyrics,
         bpm: chat.style?.bpm || 120,
@@ -89,7 +89,7 @@ export const HomePage: React.FC = () => {
         album: `${chat.style?.genre || 'Pop'} Studio Masters`,
         coverArtUrl,
         version: 'v1',
-        mp3Url: `/api/audio/${chat.id}/${chat.folderName}_v1.mp3`,
+        mp3Url: `/api/audio/${encodeURIComponent(chat.id)}/${encodeURIComponent(chat.folderName)}_v1.mp3?title=${encodeURIComponent(chat.name)}`,
         midiUrl: '',
         durationSec: 180,
         lyrics: chat.lyrics,

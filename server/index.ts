@@ -1793,18 +1793,17 @@ async function autoIntakeOutputs() {
 function setupFileWatchers() {
   const chatsDir = getChatsDir();
   try {
-    if (fs.existsSync(chatsDir)) {
-      fs.watch(chatsDir, { recursive: true }, (eventType, filename) => {
-        if (watchDebounceTimer) clearTimeout(watchDebounceTimer);
-        watchDebounceTimer = setTimeout(() => {
-          broadcastEvent({
-            type: 'chats_updated',
-            message: `Project change detected: ${filename || 'library'}`,
-            payload: { filename },
-          });
-        }, 250);
-      });
-    }
+    if (!fs.existsSync(chatsDir)) fs.mkdirSync(chatsDir, { recursive: true });
+    fs.watch(chatsDir, { recursive: true }, (eventType, filename) => {
+      if (watchDebounceTimer) clearTimeout(watchDebounceTimer);
+      watchDebounceTimer = setTimeout(() => {
+        broadcastEvent({
+          type: 'chats_updated',
+          message: `Project change detected: ${filename || 'library'}`,
+          payload: { filename },
+        });
+      }, 250);
+    });
   } catch (e) {
     console.warn('Could not watch .chats directory:', e);
   }

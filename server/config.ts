@@ -48,7 +48,7 @@ export function getDiscoveredSoundfont(): string {
 const DEFAULT_CONFIG: AppConfig = {
   provider: 'anthropic',
   model: 'claude-sonnet-5-5',
-  apiKey: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || '',
+  apiKey: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
   creativity: 0.7,
   humanization: {
     timingJitterTicks: 7,

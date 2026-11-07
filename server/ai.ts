@@ -4,10 +4,21 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { loadConfig } from './config';
 
+export function getEffectiveApiKey(provider?: string, overrideKey?: string): string {
+  if (overrideKey && overrideKey.trim().length > 0) return overrideKey.trim();
+  const config = loadConfig();
+  if (config.apiKey && config.apiKey.trim().length > 0) return config.apiKey.trim();
+  const targetProvider = provider || config.provider;
+  if (targetProvider === 'anthropic') return process.env.ANTHROPIC_API_KEY || '';
+  if (targetProvider === 'openai') return process.env.OPENAI_API_KEY || '';
+  if (targetProvider === 'google') return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+  return '';
+}
+
 export function getAIModel(overrideProvider?: string, overrideKey?: string, overrideModel?: string) {
   const config = loadConfig();
   const provider = overrideProvider || config.provider || 'anthropic';
-  const apiKey = overrideKey || config.apiKey || '';
+  const apiKey = getEffectiveApiKey(provider, overrideKey);
   const modelName = overrideModel || config.model;
 
   if (provider === 'anthropic') {
@@ -105,9 +116,10 @@ export async function generateLyrics(params: {
   referenceLyrics?: string;
 }): Promise<Record<string, string[]>> {
   const config = loadConfig();
+  const effectiveKey = getEffectiveApiKey();
 
   // If no API key configured, use procedural genre-specific generation
-  if (!config.apiKey || config.apiKey.trim().length === 0) {
+  if (!effectiveKey || effectiveKey.trim().length === 0) {
     return generateLocalFallbackLyrics(params);
   }
 
@@ -794,9 +806,10 @@ if __name__ == "__main__":
 
 export async function generatePythonMusicCode(params: GenerateCodeParams): Promise<GeneratedCodeResult> {
   const config = loadConfig();
+  const effectiveKey = getEffectiveApiKey();
 
   // If no API key configured, use procedural generator
-  if (!config.apiKey || config.apiKey.trim().length === 0) {
+  if (!effectiveKey || effectiveKey.trim().length === 0) {
     const code = generateProceduralPythonCode(params);
     const lineCount = code.split('\n').length;
     return {
@@ -886,9 +899,9 @@ Ensure it includes Intro, Verse 1, Pre-Chorus Climb with accelerating snare, Pre
 }
 
 export async function editPythonMusicCode(originalCode: string, instruction: string): Promise<GeneratedCodeResult> {
-  const config = loadConfig();
+  const effectiveKey = getEffectiveApiKey();
 
-  if (config.apiKey && config.apiKey.trim().length > 0) {
+  if (effectiveKey && effectiveKey.trim().length > 0) {
     try {
       const model = getAIModel();
       const systemPrompt = `You are an expert Python music programmer.
