@@ -184,16 +184,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchChat();
   }, [activeChatId]);
 
-  // In-Browser Web Audio Synthesizer Fallback
-  const fallbackToWebAudio = (track: PlayerTrack) => {
-    showSnackbar(`Playing synthesized accompaniment via Web Audio (${track.bpm || 120} BPM)`);
-    setIsPlaying(true);
-    setDuration(track.durationSec || 180);
-    webAudioPlayer.playHarmonicSequence(track.bpm || 120, 'C', track.durationSec || 180, (sec) => {
-      setCurrentTime(sec);
-    });
-  };
-
   // Audio element listener setup
   useEffect(() => {
     const audio = new Audio();
@@ -201,9 +191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     audioRef.current = audio;
 
     audio.ontimeupdate = () => {
-      if (!webAudioPlayer.isRunning()) {
-        setCurrentTime(audio.currentTime);
-      }
+      setCurrentTime(audio.currentTime);
     };
     audio.onloadedmetadata = () => {
       if (audio.duration && !isNaN(audio.duration) && audio.duration > 0) {
@@ -214,25 +202,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsPlaying(true);
     };
     audio.onpause = () => {
-      if (!webAudioPlayer.isRunning()) {
-        setIsPlaying(false);
-      }
+      setIsPlaying(false);
     };
     audio.onended = () => {
       setIsPlaying(false);
       setCurrentTime(0);
     };
     audio.onerror = (e) => {
-      console.warn('HTML Audio Element error, activating Web Audio fallback:', e, audio.error);
-      if (currentTrack) {
-        fallbackToWebAudio(currentTrack);
-      }
+      console.warn('HTML Audio Element error:', e, audio.error);
+      setIsPlaying(false);
     };
 
     return () => {
       audio.pause();
       audio.src = '';
-      webAudioPlayer.stop();
     };
   }, []);
 
@@ -254,10 +237,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (
       currentTrack &&
       currentTrack.chatId === track.chatId &&
+      currentTrack.songName === track.songName &&
       currentTrack.version === track.version &&
       audioRef.current &&
-      audioRef.current.src &&
-      !webAudioPlayer.isRunning()
+      audioRef.current.src
     ) {
       if (audioRef.current.paused) {
         audioRef.current
@@ -268,9 +251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .catch(err => {
             console.warn('Resume play error:', err);
             if (err.name === 'NotAllowedError') {
-              showSnackbar('Click play in player to unlock browser audio');
-            } else {
-              fallbackToWebAudio(normalizedTrack);
+              showSnackbar('Autoplay blocked: Click play in player to unlock browser audio');
             }
           });
       }
@@ -278,38 +259,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 3. New track load
-    webAudioPlayer.stop();
     setCurrentTrack(normalizedTrack);
     setDuration(normalizedTrack.durationSec || 180);
 
     if (audioRef.current) {
-      audioRef.current.src = safeMp3Url;
-      audioRef.current.volume = volume;
-      audioRef.current.load();
-      audioRef.current
-        .play()
-        .then(() => {
-          setIsPlaying(true);
-        })
-        .catch(err => {
-          console.warn('Audio playback error:', err);
-          if (err.name === 'NotAllowedError') {
-            showSnackbar('Autoplay blocked: Click play in player to listen');
-          } else {
-            fallbackToWebAudio(normalizedTrack);
-          }
-        });
-    } else {
-      fallbackToWebAudio(normalizedTrack);
+      const audio = audioRef.current;
+      audio.pause();
+      audio.src = safeMp3Url;
+      audio.volume = volume;
+      audio.currentTime = 0;
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch(err => {
+            if (err.name === 'NotAllowedError') {
+              showSnackbar('Autoplay blocked: Click play in player to listen');
+              setIsPlaying(false);
+            } else if (err.name === 'AbortError') {
+              // Harmless interruption by user rapidly selecting another track
+            } else {
+              console.error('Audio playback error:', err);
+              showSnackbar(`Could not stream audio for "${track.songName}".`);
+              setIsPlaying(false);
+            }
+          });
+      }
     }
   };
 
   const pauseTrack = () => {
     if (audioRef.current) {
       audioRef.current.pause();
-    }
-    if (webAudioPlayer.isRunning()) {
-      webAudioPlayer.stop();
     }
     setIsPlaying(false);
   };
@@ -318,13 +302,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isPlaying) {
       pauseTrack();
     } else if (currentTrack) {
-      if (audioRef.current && audioRef.current.src && !webAudioPlayer.isRunning()) {
+      if (audioRef.current && audioRef.current.src) {
         audioRef.current
           .play()
           .then(() => setIsPlaying(true))
           .catch(err => {
             console.warn('Toggle playback error:', err);
-            fallbackToWebAudio(currentTrack);
+            if (err.name === 'NotAllowedError') {
+              showSnackbar('Click play in player to unlock browser audio');
+            }
           });
       } else {
         playTrack(currentTrack);

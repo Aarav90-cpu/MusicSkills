@@ -7,6 +7,7 @@
  */
 
 import { searchFirstLyricsFromLRCLib, getLyricsFromLRCLib } from './lrclib';
+import { parseAudioFileMetadata } from './id3Parser';
 
 export interface CustomMetadataTag {
   key: string;
@@ -438,11 +439,8 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
     const dir = getDirectoryPath(relPath).toLowerCase();
     const fullKey = `${dir}/${baseName.toLowerCase()}`;
 
-    // Extract tags from file name and directory structure
-    const parsedTags = guessTagsFromPath(relPath, baseName);
-
-    // Audio Object URL
-    const audioUrl = URL.createObjectURL(audio);
+    // 1. High-fidelity ID3 Tag parsing directly from audio bytes
+    const id3Meta = await parseAudioFileMetadata(audio);
 
     // Read companion LRC if present
     let localSyncedLyrics: string | undefined;
@@ -463,28 +461,67 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       } catch (_) {}
     }
 
-    // Match Cover Art
-    let coverArtUrl: string | undefined;
+    // Match Cover Art (either embedded in ID3, or companion image in folder)
+    let coverArtUrl: string | undefined = id3Meta.coverArtUrl;
     const companionImg = imageMap.get(dir) || imageMap.get(fullKey) || imageMap.get(baseName.toLowerCase());
     if (companionImg) {
       coverArtUrl = URL.createObjectURL(companionImg);
       matchedCoverCount++;
     }
 
-    // Measure audio duration using an Audio element
-    const durationSec = await getAudioDuration(audioUrl);
+    // Measure audio duration using in-memory Audio object
+    const tempBlobUrl = URL.createObjectURL(audio);
+    const durationSec = await getAudioDuration(tempBlobUrl);
 
-    // Initial track assembly
+    // 2. Upload to server to persist in .chats/ with permanent HTTP streaming URL
+    let permanentAudioUrl = '';
+    let trackChatId = `imported-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', audio);
+      formData.append('title', id3Meta.title);
+      formData.append('artist', id3Meta.artist);
+      formData.append('album', id3Meta.album);
+      formData.append('genre', id3Meta.genre || 'pop');
+      formData.append('bpm', '120');
+      formData.append('durationSec', (durationSec || 180).toString());
+
+      if (localSyncedLyrics) {
+        const lrcBlob = new Blob([localSyncedLyrics], { type: 'text/plain' });
+        formData.append('lrc', lrcBlob, `${id3Meta.title}.lrc`);
+      }
+
+      const uploadRes = await fetch('/api/custom-song/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (uploadRes.ok) {
+        const data = await uploadRes.json();
+        if (data.chat && data.chat.versions && data.chat.versions.length > 0) {
+          trackChatId = data.chat.id;
+          const targetMp3 = data.chat.versions[data.chat.versions.length - 1].mp3File;
+          permanentAudioUrl = `/api/audio/${trackChatId}/${targetMp3}`;
+        }
+      }
+    } catch (uploadErr) {
+      console.warn('Server audio upload notice:', uploadErr);
+    }
+
+    const finalAudioUrl = permanentAudioUrl || tempBlobUrl;
+
+    // 3. Assemble complete library track
     const initialTrack: LibraryTrack = {
-      id: `imported-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      title: parsedTags.title,
-      artist: parsedTags.artist,
-      album: parsedTags.album,
-      trackNumber: parsedTags.trackNumber,
-      genre: parsedTags.genre,
-      year: parsedTags.year,
-      durationSec,
-      audioUrl,
+      id: trackChatId,
+      title: id3Meta.title,
+      artist: id3Meta.artist,
+      album: id3Meta.album,
+      trackNumber: id3Meta.trackNumber,
+      genre: id3Meta.genre || 'Pop',
+      year: id3Meta.year,
+      durationSec: durationSec || 180,
+      audioUrl: finalAudioUrl,
       coverArtUrl,
       dateAdded: new Date().toISOString(),
       fileSource: 'imported',
@@ -501,7 +538,7 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       customTags: [],
     };
 
-    // If no local lyrics, automatically query and cache from LRCLIB
+    // 4. If no local lyrics, automatically query and cache from LRCLIB using Title + Artist
     if (!initialTrack.localSyncedLyrics && !initialTrack.offlineStaticLyrics) {
       await fetchAndCacheLyricsForTrack(initialTrack, false);
     }

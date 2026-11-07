@@ -104,26 +104,81 @@ export async function searchLyricsFromLRCLib(
 }
 
 /**
- * Helper to fetch the first matching synced lyric record
+ * Helper to fetch the first matching synced lyric record with intelligent ranking
  */
 export async function searchFirstLyricsFromLRCLib(
   queryInput: string | LRCLibQueryParams
 ): Promise<LRCLibRecord | null> {
-  // If structured params are provided with track and artist, try exact get endpoint first
-  if (typeof queryInput !== 'string' && queryInput.track_name && queryInput.artist_name) {
-    const exact = await getLyricsFromLRCLib({
-      trackName: queryInput.track_name,
-      artistName: queryInput.artist_name,
-      albumName: queryInput.album_name,
-      durationSec: queryInput.duration,
-    });
-    if (exact) return exact;
+  let targetTrack = '';
+  let targetArtist = '';
+
+  if (typeof queryInput !== 'string') {
+    targetTrack = (queryInput.track_name || '').toLowerCase().trim();
+    targetArtist = (queryInput.artist_name || '').toLowerCase().trim();
+
+    if (targetTrack && targetArtist && targetArtist !== 'unknown artist') {
+      const exact = await getLyricsFromLRCLib({
+        trackName: queryInput.track_name!,
+        artistName: queryInput.artist_name!,
+        albumName: queryInput.album_name,
+        durationSec: queryInput.duration,
+      });
+      if (exact && (exact.syncedLyrics || exact.plainLyrics)) return exact;
+    }
+  } else {
+    // If it's a string, check for 'by' or '-' delimiters
+    const raw = queryInput.trim();
+    if (raw.toLowerCase().includes(' by ')) {
+      const parts = raw.split(/\s+by\s+/i);
+      targetTrack = parts[0].trim().toLowerCase();
+      targetArtist = parts[1].trim().toLowerCase();
+    } else if (raw.includes(' - ')) {
+      const parts = raw.split(' - ');
+      targetArtist = parts[0].trim().toLowerCase();
+      targetTrack = parts[1].trim().toLowerCase();
+    } else {
+      targetTrack = raw.toLowerCase();
+    }
   }
 
-  const records = await searchLyricsFromLRCLib(queryInput);
-  if (records.length === 0) return null;
+  // Handle common typo/alias e.g. "mj" -> "michael jackson", "off the walk" -> "off the wall"
+  if (targetArtist === 'mj') targetArtist = 'michael jackson';
+  if (targetTrack === 'off the walk') targetTrack = 'off the wall';
 
-  // Prefer records that have syncedLyrics
-  const syncedMatch = records.find(r => Boolean(r.syncedLyrics && r.syncedLyrics.trim().length > 0));
-  return syncedMatch || records[0];
+  const searchQuery = targetArtist ? `${targetTrack} ${targetArtist}` : (typeof queryInput === 'string' ? queryInput : targetTrack);
+  const records = await searchLyricsFromLRCLib(searchQuery);
+  if (records.length === 0) {
+    if (targetTrack && targetArtist) {
+      const fallbackRecords = await searchLyricsFromLRCLib(targetTrack);
+      if (fallbackRecords.length > 0) {
+        return fallbackRecords.find(r => Boolean(r.syncedLyrics)) || fallbackRecords[0];
+      }
+    }
+    return null;
+  }
+
+  // Score each candidate record to guarantee the most relevant artist & track is selected
+  const scored = records.map(r => {
+    let score = 0;
+    const rTrack = (r.trackName || '').toLowerCase();
+    const rArtist = (r.artistName || '').toLowerCase();
+
+    if (r.syncedLyrics && r.syncedLyrics.trim().length > 0) score += 50;
+    if (r.plainLyrics && r.plainLyrics.trim().length > 0) score += 20;
+
+    if (targetArtist) {
+      if (rArtist === targetArtist) score += 100;
+      else if (rArtist.includes(targetArtist) || targetArtist.includes(rArtist)) score += 60;
+    }
+
+    if (targetTrack) {
+      if (rTrack === targetTrack) score += 80;
+      else if (rTrack.includes(targetTrack) || targetTrack.includes(rTrack)) score += 40;
+    }
+
+    return { record: r, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.record || null;
 }

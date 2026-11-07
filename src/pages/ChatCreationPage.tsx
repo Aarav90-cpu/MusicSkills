@@ -334,6 +334,8 @@ export const ChatCreationPage: React.FC = () => {
           playTrack({
             chatId: activeChatId,
             songName: topic || activeChat?.name || 'Untitled',
+            artist: 'AI Studio Producer',
+            album: 'Studio Master Compositions',
             version: data.version.version,
             mp3Url: `/api/audio/${activeChatId}/${mp3File}`,
             midiUrl: `/api/audio/${activeChatId}/${data.version.midiFile}`,
@@ -1156,6 +1158,8 @@ export const ChatCreationPage: React.FC = () => {
                         playTrack({
                           chatId: activeChatId,
                           songName: topic || activeChat?.name || 'Untitled',
+                          artist: 'AI Studio Producer',
+                          album: 'Studio Master Compositions',
                           version: latestVersion.version,
                           mp3Url: `/api/audio/${activeChatId}/${mp3File}`,
                           midiUrl: `/api/audio/${activeChatId}/${latestVersion.midiFile}`,

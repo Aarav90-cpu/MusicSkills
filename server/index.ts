@@ -312,7 +312,7 @@ app.post('/api/custom-song/import', upload.fields([{ name: 'audio', maxCount: 1 
     return res.status(400).json({ error: 'Audio file (.mp3, .wav) is required' });
   }
 
-  const { title = 'Custom Track', artist = '', genre = 'pop', bpm = '120' } = req.body;
+  const { title = 'Custom Track', artist = '', album = '', genre = 'pop', bpm = '120', durationSec = '180' } = req.body;
   const lrcFile = files?.['lrc']?.[0];
   const lrcContent = lrcFile ? lrcFile.buffer.toString('utf-8') : (req.body.lrcText || '');
 
@@ -320,8 +320,10 @@ app.post('/api/custom-song/import', upload.fields([{ name: 'audio', maxCount: 1 
     const newChat = await importCustomSong({
       title,
       artist,
+      album,
       genre,
       bpm: parseInt(bpm) || 120,
+      durationSec: parseFloat(durationSec) || 180,
       audioBuffer: audioFile.buffer,
       audioOriginalName: audioFile.originalname,
       lrcContent,
@@ -987,30 +989,78 @@ app.post('/api/agents/session/:id/cancel', (req, res) => {
 
 let watchDebounceTimer: NodeJS.Timeout | null = null;
 
-function autoIntakeOutputs() {
+function scanOutputsRecursively(dir: string, baseDir = dir): Array<{ fullPath: string; relPath: string; dirName: string; fileName: string }> {
+  let results: Array<{ fullPath: string; relPath: string; dirName: string; fileName: string }> = [];
+  if (!fs.existsSync(dir)) return results;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results = results.concat(scanOutputsRecursively(full, baseDir));
+    } else if (entry.isFile() && entry.name.endsWith('.mid')) {
+      const rel = path.relative(baseDir, full);
+      results.push({
+        fullPath: full,
+        relPath: rel,
+        dirName: path.dirname(rel) === '.' ? '' : path.dirname(rel),
+        fileName: entry.name,
+      });
+    }
+  }
+  return results;
+}
+
+async function autoIntakeOutputs() {
   const outputsDir = path.resolve(process.cwd(), 'outputs');
   if (!fs.existsSync(outputsDir)) return;
-  const files = fs.readdirSync(outputsDir);
-  const midFiles = files.filter(f => f.endsWith('.mid'));
+  const midEntries = scanOutputsRecursively(outputsDir);
 
-  for (const mid of midFiles) {
-    const baseName = mid.replace(/\.mid$/, '');
+  for (const item of midEntries) {
+    const baseName = item.fileName.replace(/\.mid$/, '');
     const existing = listChats().find(c => c.folderName.startsWith(baseName) || c.name.toLowerCase() === baseName.toLowerCase());
     if (!existing) {
       const title = baseName.replace(/[_-]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      const newChat = createChat(title);
-      const targetDir = path.join(getChatsDir(), newChat.folderName);
-      fs.copyFileSync(path.join(outputsDir, mid), path.join(targetDir, `${newChat.folderName}_v1.mid`));
+      let genre = 'pop';
+      if (item.dirName.includes('indian')) genre = 'indian';
+      else if (item.dirName.includes('rock')) genre = 'rock';
+      else if (item.dirName.includes('phonk')) genre = 'phonk';
+      else if (item.dirName.includes('electronic')) genre = 'electronic';
+      else if (item.dirName.includes('hip-hop')) genre = 'hip-hop';
 
-      const lrcFile = `${baseName}.lrc`;
-      if (fs.existsSync(path.join(outputsDir, lrcFile))) {
-        fs.copyFileSync(path.join(outputsDir, lrcFile), path.join(targetDir, `${newChat.folderName}_v1.lrc`));
+      const newChat = createChat(title, {
+        topic: title,
+        genre,
+        bpm: 120,
+      });
+      const targetDir = path.join(getChatsDir(), newChat.folderName);
+      fs.copyFileSync(item.fullPath, path.join(targetDir, `${newChat.folderName}_v1.mid`));
+
+      const sourceLrc = item.fullPath.replace(/\.mid$/, '.lrc');
+      let lyricsMap: Record<string, string[]> = {};
+      let lrcFileName = '';
+      if (fs.existsSync(sourceLrc)) {
+        lrcFileName = `${newChat.folderName}_v1.lrc`;
+        fs.copyFileSync(sourceLrc, path.join(targetDir, lrcFileName));
+        const lrcContent = fs.readFileSync(sourceLrc, 'utf-8');
+        lyricsMap = parseLrcToLyricsMap(lrcContent);
+      } else {
+        lyricsMap = { 'Lyrics': ['[Instrumental composition]'] };
       }
 
-      const outputMp3 = `${baseName}.mp3`;
+      newChat.lyrics = lyricsMap;
+
+      const sourceMp3 = item.fullPath.replace(/\.mid$/, '.mp3');
       const targetMp3 = `${newChat.folderName}_v1.mp3`;
-      if (fs.existsSync(path.join(outputsDir, outputMp3))) {
-        fs.copyFileSync(path.join(outputsDir, outputMp3), path.join(targetDir, targetMp3));
+      const targetMp3Path = path.join(targetDir, targetMp3);
+
+      if (fs.existsSync(sourceMp3)) {
+        fs.copyFileSync(sourceMp3, targetMp3Path);
+      } else {
+        try {
+          await renderMidiToAudio(item.fullPath, targetMp3Path);
+        } catch (e) {
+          console.warn(`Could not render audio for auto-intake ${title}:`, e);
+        }
       }
 
       newChat.versions.push({
@@ -1020,14 +1070,14 @@ function autoIntakeOutputs() {
         key: 'C',
         midiFile: `${newChat.folderName}_v1.mid`,
         mp3File: targetMp3,
-        leadSheetFile: '',
+        leadSheetFile: lrcFileName,
         durationSec: 180,
-        notes: 'Auto-imported from external outputs/ directory',
+        notes: `Auto-imported from outputs/${item.relPath}`,
       });
       saveChat(newChat);
       broadcastEvent({
         type: 'chats_updated',
-        message: `Auto-imported external track: "${title}"`,
+        message: `Auto-imported project: "${title}" (${genre})`,
         payload: { id: newChat.id, name: title },
       });
     }
@@ -1072,6 +1122,11 @@ function setupFileWatchers() {
 // --- SERVER INITIALIZATION WITH VITE INTEGRATION ---
 
 async function startServer() {
+  try {
+    await autoIntakeOutputs();
+  } catch (err) {
+    console.warn('Initial auto-intake notice:', err);
+  }
   setupFileWatchers();
   const isDev = process.env.NODE_ENV !== 'production';
 

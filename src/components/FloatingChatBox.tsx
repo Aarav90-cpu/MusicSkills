@@ -483,6 +483,8 @@ export const FloatingChatBox: React.FC = () => {
                             playTrack({
                               chatId: activeChat.id,
                               songName: activeChat.name,
+                              artist: activeChat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer',
+                              album: 'Studio Master Compositions',
                               version: latest.version,
                               mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
                               midiUrl: latest.midiFile ? `/api/audio/${activeChat.id}/${latest.midiFile}` : '',

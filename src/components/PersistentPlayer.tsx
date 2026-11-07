@@ -51,25 +51,36 @@ export const PersistentPlayer: React.FC = () => {
         zIndex: 1000,
       }}
     >
-      {/* 48px Gradient Cover */}
+      {/* 48px Cover Art or Gradient Signature */}
       <div
+        onClick={() => setRoute('lyrics')}
         style={{
           width: '48px',
           height: '48px',
           borderRadius: 'var(--radius-md)',
-          background: 'var(--gradient-signature)',
+          background: currentTrack.coverArtUrl ? `url("${currentTrack.coverArtUrl}") center/cover no-repeat` : 'var(--gradient-signature)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
           color: '#FFF',
+          cursor: 'pointer',
+          overflow: 'hidden',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
         }}
+        title="Open Scrolling Lyrics & Stage"
       >
-        <span className="material-icons-round" style={{ fontSize: '24px' }}>graphic_eq</span>
+        {!currentTrack.coverArtUrl && (
+          <span className="material-icons-round" style={{ fontSize: '24px' }}>graphic_eq</span>
+        )}
       </div>
 
       {/* Title & Metadata */}
-      <div style={{ minWidth: '140px', maxWidth: '200px', overflow: 'hidden' }}>
+      <div
+        onClick={() => setRoute('lyrics')}
+        style={{ minWidth: '150px', maxWidth: '240px', overflow: 'hidden', cursor: 'pointer' }}
+        title="Open Scrolling Lyrics"
+      >
         <div
           style={{
             fontFamily: 'var(--font-display)',
@@ -88,9 +99,12 @@ export const PersistentPlayer: React.FC = () => {
             fontSize: '12px',
             color: 'var(--color-text-secondary)',
             fontFamily: 'var(--font-mono)',
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            overflow: 'hidden',
           }}
         >
-          {currentTrack.version} · {currentTrack.bpm} BPM
+          {currentTrack.artist ? `${currentTrack.artist} · ` : ''}{currentTrack.bpm} BPM · {currentTrack.version}
         </div>
       </div>
 

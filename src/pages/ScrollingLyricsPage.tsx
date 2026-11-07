@@ -9,6 +9,7 @@ import {
   SyncedLyricLine,
 } from '../utils/lrcParser';
 import { searchFirstLyricsFromLRCLib } from '../utils/lrclib';
+import { parseAudioFileMetadata } from '../utils/id3Parser';
 
 export const ScrollingLyricsPage: React.FC = () => {
   const {
@@ -53,15 +54,20 @@ export const ScrollingLyricsPage: React.FC = () => {
   const activeLineRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Target song source: either an existing chat, or custom uploaded track
-  const currentSongName = customAudioFile
-    ? customTitle
-    : activeChat?.name || currentTrack?.songName || 'No Song Selected';
+  // Target song source: currentTrack has priority, then custom import, then activeChat
+  const currentSongName = currentTrack?.songName || (customAudioFile ? customTitle : activeChat?.name || 'No Song Selected');
+  const currentArtistName = currentTrack?.artist || customArtist || activeChat?.style?.description || '';
 
-  // Load lyrics when activeChat changes or customLrcText changes
+  // Load lyrics when activeChat changes, currentTrack changes, or customLrcText changes
   useEffect(() => {
     if (customLrcText.trim()) {
       const parsed = parseLRC(customLrcText);
+      setSyncedLines(parsed.lines);
+      return;
+    }
+
+    if (currentTrack?.syncedLyrics && currentTrack.syncedLyrics.trim()) {
+      const parsed = parseLRC(currentTrack.syncedLyrics);
       setSyncedLines(parsed.lines);
       return;
     }
@@ -162,22 +168,26 @@ export const ScrollingLyricsPage: React.FC = () => {
   // Fetch lyrics from LRCLIB
   const handleFetchFromLRCLib = async () => {
     setIsFetchingLrcLib(true);
-    showSnackbar(`Searching LRCLIB for "${currentSongName}"...`);
+    const query = currentArtistName ? `${currentSongName} ${currentArtistName}` : currentSongName;
+    showSnackbar(`Searching LRCLIB for "${query}"...`);
     try {
-      const record = await searchFirstLyricsFromLRCLib(currentSongName);
+      const record = await searchFirstLyricsFromLRCLib({
+        track_name: currentSongName,
+        artist_name: currentArtistName || undefined,
+      });
       if (record && record.syncedLyrics) {
         setCustomLrcText(record.syncedLyrics);
         const parsed = parseLRC(record.syncedLyrics);
         setSyncedLines(parsed.lines);
-        showSnackbar(`Loaded ${parsed.lines.length} synchronized lines from LRCLIB (${record.artistName || 'Unknown Artist'})`);
+        showSnackbar(`Loaded ${parsed.lines.length} synchronized lines from LRCLIB (${record.trackName} by ${record.artistName || 'Artist'})`);
       } else if (record && record.plainLyrics) {
         setCustomLrcText(record.plainLyrics);
         const parsed = parseLRC(record.plainLyrics);
         setSyncedLines(parsed.lines);
-        showSnackbar(`Loaded plain lyrics from LRCLIB. Ready to sync with Enter key!`);
+        showSnackbar(`Loaded plain lyrics from LRCLIB (${record.trackName} by ${record.artistName || 'Artist'}). Ready to sync with Enter key!`);
         setMode('syncer');
       } else {
-        showSnackbar('No matching lyrics found on LRCLIB');
+        showSnackbar(`No matching lyrics found on LRCLIB for "${query}"`);
       }
     } catch (err: any) {
       showSnackbar(`LRCLIB search error: ${err.message}`);
@@ -227,17 +237,25 @@ export const ScrollingLyricsPage: React.FC = () => {
   };
 
   // Handle custom audio file selection
-  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setCustomAudioFile(file);
       const url = URL.createObjectURL(file);
       setCustomAudioUrl(url);
 
+      const meta = await parseAudioFileMetadata(file);
+      const title = meta.title || file.name.replace(/\.[^/.]+$/, '');
+      const artist = meta.artist || '';
+      setCustomTitle(title);
+      if (artist) setCustomArtist(artist);
+
       // Automatically play this custom track in the audio context
       playTrack({
-        chatId: 'custom',
-        songName: file.name.replace(/\.[^/.]+$/, ''),
+        chatId: `custom-${Date.now()}`,
+        songName: title,
+        artist,
+        coverArtUrl: meta.coverArtUrl,
         version: 'Custom Take',
         mp3Url: url,
         midiUrl: '',
@@ -246,8 +264,7 @@ export const ScrollingLyricsPage: React.FC = () => {
         bpm: customBpm,
       });
 
-      setCustomTitle(file.name.replace(/\.[^/.]+$/, ''));
-      showSnackbar(`Loaded audio track: ${file.name}`);
+      showSnackbar(`Loaded audio track: "${title}" ${artist ? `by ${artist}` : ''}`);
     }
   };
 

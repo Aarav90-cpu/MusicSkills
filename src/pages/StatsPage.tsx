@@ -56,18 +56,35 @@ export const StatsPage: React.FC = () => {
       .filter(c => c.versions && c.versions.length > 0)
       .map(c => {
         const latest = c.versions[c.versions.length - 1];
+        const desc = (c.style?.description || '').trim();
+        let artistName = 'AI Studio Producer';
+        let albumName = 'Studio Master Compositions';
+
+        if (desc.startsWith('Custom import by ')) {
+          artistName = desc.replace('Custom import by ', '').trim();
+          albumName = 'Custom Imports';
+        } else if (desc.includes(' · ')) {
+          const parts = desc.split(' · ');
+          artistName = parts[0].trim();
+          albumName = parts[1].trim();
+        } else if (desc && !desc.includes('song import') && !desc.includes('composition')) {
+          artistName = desc;
+        }
+
+        const mp3 = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${c.folderName}_${latest.version || 'v1'}.mp3`);
+
         return {
           id: c.id,
           title: c.name,
-          artist: 'AI Studio Producer',
-          album: 'Studio Master Compositions',
+          artist: artistName,
+          album: albumName,
           genre: c.style?.genre || 'Pop',
           bpm: c.style?.bpm || 120,
           rootKey: c.style?.key || 'C',
           mood: (c.style?.moods && c.style?.moods[0]) || 'energetic',
           purpose: (c.style?.purposes && c.style?.purposes[0]) || 'creative',
           durationSec: latest.durationSec || 180,
-          audioUrl: `/api/audio/${c.id}/${latest.mp3File}`,
+          audioUrl: `/api/audio/${c.id}/${mp3}`,
           dateAdded: c.createdAt,
           fileSource: 'generated',
           lyricsSource: 'local_synced',
@@ -136,11 +153,15 @@ export const StatsPage: React.FC = () => {
     playTrack({
       chatId: track.id,
       songName: track.title,
+      artist: track.artist,
+      album: track.album,
+      coverArtUrl: track.coverArtUrl,
       version: 'v1',
       mp3Url: track.audioUrl,
       midiUrl: track.audioUrl.endsWith('.mid') ? track.audioUrl : '',
       durationSec: track.durationSec,
       bpm: track.bpm || 120,
+      syncedLyrics: track.localSyncedLyrics || track.onlineSyncedLyrics,
       lyrics: {},
     });
     showSnackbar(`Playing "${track.title}" by ${track.artist}`);

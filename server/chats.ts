@@ -284,16 +284,18 @@ export function parseLrcToLyricsMap(lrcText: string): Record<string, string[]> {
 export async function importCustomSong(params: {
   title: string;
   artist?: string;
+  album?: string;
   genre?: string;
   bpm?: number;
+  durationSec?: number;
   audioBuffer: Buffer;
   audioOriginalName: string;
   lrcContent?: string;
 }): Promise<ChatSession> {
-  const { title, artist, genre = 'pop', bpm = 120, audioBuffer, audioOriginalName, lrcContent } = params;
+  const { title, artist, album, genre = 'pop', bpm = 120, durationSec = 180, audioBuffer, audioOriginalName, lrcContent } = params;
   const newChat = createChat(title, {
     topic: title,
-    description: artist ? `Custom import by ${artist}` : 'Custom song import',
+    description: artist ? (album ? `${artist} · ${album}` : `Custom import by ${artist}`) : 'Custom song import',
     genre,
     bpm,
   });
@@ -327,8 +329,8 @@ export async function importCustomSong(params: {
     midiFile: '',
     mp3File: audioFileName,
     leadSheetFile: lrcFileName,
-    durationSec: 180,
-    notes: 'Imported custom audio and synced lyrics',
+    durationSec,
+    notes: artist ? `Imported track by ${artist}${album ? ` from "${album}"` : ''}` : 'Imported custom audio and synced lyrics',
   });
 
   saveChat(newChat);

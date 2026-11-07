@@ -145,6 +145,8 @@ export const IteratePage: React.FC = () => {
         playTrack({
           chatId: activeChat.id,
           songName: activeChat.name,
+          artist: activeChat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer',
+          album: 'Studio Master Compositions',
           version: newV.version,
           mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
           midiUrl: newV.midiFile ? `/api/audio/${activeChat.id}/${newV.midiFile}` : '',
@@ -493,6 +495,8 @@ export const IteratePage: React.FC = () => {
                         playTrack({
                           chatId: activeChat.id,
                           songName: activeChat.name,
+                          artist: activeChat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer',
+                          album: 'Studio Master Compositions',
                           version: versionA.version,
                           mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
                           midiUrl: versionA.midiFile ? `/api/audio/${activeChat.id}/${versionA.midiFile}` : '',
@@ -577,6 +581,8 @@ export const IteratePage: React.FC = () => {
                         playTrack({
                           chatId: activeChat.id,
                           songName: activeChat.name,
+                          artist: activeChat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer',
+                          album: 'Studio Master Compositions',
                           version: versionB.version,
                           mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
                           midiUrl: versionB.midiFile ? `/api/audio/${activeChat.id}/${versionB.midiFile}` : '',
@@ -718,6 +724,8 @@ export const IteratePage: React.FC = () => {
                         playTrack({
                           chatId: activeChat.id,
                           songName: activeChat.name,
+                          artist: activeChat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer',
+                          album: 'Studio Master Compositions',
                           version: ver.version,
                           mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
                           midiUrl: ver.midiFile ? `/api/audio/${activeChat.id}/${ver.midiFile}` : '',

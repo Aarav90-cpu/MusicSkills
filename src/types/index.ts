@@ -75,6 +75,10 @@ export interface ActivityEvent {
 export interface PlayerTrack {
   chatId: string;
   songName: string;
+  artist?: string;
+  album?: string;
+  coverArtUrl?: string;
+  syncedLyrics?: string;
   version: string;
   mp3Url: string;
   midiUrl: string;

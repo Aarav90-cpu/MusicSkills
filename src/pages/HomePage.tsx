@@ -62,30 +62,35 @@ export const HomePage: React.FC = () => {
 
   const handlePlaySong = (e: React.MouseEvent, chat: ChatSession) => {
     e.stopPropagation();
+    const artist = chat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer';
     if (chat.versions.length > 0) {
       const latest = chat.versions[chat.versions.length - 1];
       const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${chat.folderName}_${latest.version || 'v1'}.mp3`);
       playTrack({
         chatId: chat.id,
         songName: chat.name,
+        artist,
+        album: `${chat.style?.genre || 'Pop'} Studio Masters`,
         version: latest.version,
         mp3Url: `/api/audio/${chat.id}/${mp3File}`,
         midiUrl: latest.midiFile ? `/api/audio/${chat.id}/${latest.midiFile}` : '',
         durationSec: latest.durationSec || 180,
         lyrics: chat.lyrics,
-        bpm: chat.style.bpm || 120,
+        bpm: chat.style?.bpm || 120,
       });
     } else {
       // Play synthesized master or navigate to generation
       playTrack({
         chatId: chat.id,
         songName: chat.name,
+        artist,
+        album: `${chat.style?.genre || 'Pop'} Studio Masters`,
         version: 'v1',
         mp3Url: `/api/audio/${chat.id}/${chat.folderName}_v1.mp3`,
         midiUrl: '',
         durationSec: 180,
         lyrics: chat.lyrics,
-        bpm: chat.style.bpm || 120,
+        bpm: chat.style?.bpm || 120,
       });
     }
   };
@@ -408,6 +413,8 @@ export const HomePage: React.FC = () => {
                           playTrack({
                             chatId: chat.id,
                             songName: chat.name,
+                            artist: chat.style?.description?.replace(/^Custom import by\s*/i, '') || 'AI Studio Producer',
+                            album: `${chat.style?.genre || 'Pop'} Studio Masters`,
                             version: latestVersion.version,
                             mp3Url: `/api/audio/${chat.id}/${mp3File}`,
                             midiUrl: latestVersion.midiFile ? `/api/audio/${chat.id}/${latestVersion.midiFile}` : '',
