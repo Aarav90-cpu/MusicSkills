@@ -13,6 +13,9 @@ export interface ParsedAudioMetadata {
   genre?: string;
   trackNumber?: number;
   coverArtUrl?: string;
+  coverArtDataUrl?: string;
+  embeddedSyncedLyrics?: string;
+  embeddedStaticLyrics?: string;
 }
 
 /**
@@ -132,6 +135,107 @@ function parseID3v2(buffer: ArrayBuffer): Partial<ParsedAudioMetadata> | null {
         const raw = decodeText(payload, encoding);
         const match = raw.match(/^(\d+)/);
         if (match) metadata.trackNumber = parseInt(match[1], 10);
+      } else if (frameId === 'USLT' || frameId === 'ULT') {
+        try {
+          // USLT: encoding (1 byte) + language (3 bytes) + null-terminated descriptor + lyrics text
+          const enc = encoding;
+          let descEnd = 4;
+          if (enc === 1 || enc === 2) {
+            // UTF-16: 2 null bytes (0x00 0x00)
+            while (descEnd + 1 < frameData.length) {
+              if (frameData[descEnd] === 0 && frameData[descEnd + 1] === 0) {
+                descEnd += 2;
+                break;
+              }
+              descEnd += 2;
+            }
+          } else {
+            // 1 null byte
+            while (descEnd < frameData.length && frameData[descEnd] !== 0) {
+              descEnd++;
+            }
+            descEnd++;
+          }
+
+          if (descEnd < frameData.length) {
+            const lyrBytes = frameData.subarray(descEnd);
+            const decodedLyrics = decodeText(lyrBytes, enc).trim();
+            if (decodedLyrics) {
+              // Check if lyrics contain timestamps [mm:ss.xx]
+              if (/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/.test(decodedLyrics)) {
+                metadata.embeddedSyncedLyrics = decodedLyrics;
+              } else {
+                metadata.embeddedStaticLyrics = decodedLyrics;
+              }
+            }
+          }
+        } catch (_) {}
+      } else if (frameId === 'SYLT' || frameId === 'SLT') {
+        try {
+          // SYLT: encoding (1 byte) + language (3 bytes) + timestamp format (1 byte) + content type (1 byte) + descriptor + entries
+          const enc = encoding;
+          const tsFormat = frameData[4]; // 2 = milliseconds, 1 = MPEG frames
+          let descEnd = 6;
+          if (enc === 1 || enc === 2) {
+            while (descEnd + 1 < frameData.length) {
+              if (frameData[descEnd] === 0 && frameData[descEnd + 1] === 0) {
+                descEnd += 2;
+                break;
+              }
+              descEnd += 2;
+            }
+          } else {
+            while (descEnd < frameData.length && frameData[descEnd] !== 0) {
+              descEnd++;
+            }
+            descEnd++;
+          }
+
+          // Entries: text string (null term) + 4-byte timestamp
+          let p = descEnd;
+          const lines: { timeSec: number; text: string }[] = [];
+          while (p < frameData.length) {
+            let textEnd = p;
+            if (enc === 1 || enc === 2) {
+              while (textEnd + 1 < frameData.length && !(frameData[textEnd] === 0 && frameData[textEnd + 1] === 0)) {
+                textEnd += 2;
+              }
+            } else {
+              while (textEnd < frameData.length && frameData[textEnd] !== 0) {
+                textEnd++;
+              }
+            }
+
+            if (textEnd >= frameData.length) break;
+            const textBytes = frameData.subarray(p, textEnd);
+            const entryText = decodeText(textBytes, enc).trim();
+            const afterText = enc === 1 || enc === 2 ? textEnd + 2 : textEnd + 1;
+            if (afterText + 4 <= frameData.length) {
+              const rawTs = (frameData[afterText] << 24) | (frameData[afterText + 1] << 16) | (frameData[afterText + 2] << 8) | frameData[afterText + 3];
+              const timeSec = tsFormat === 2 ? rawTs / 1000 : rawTs / 38.28;
+              if (entryText) {
+                lines.push({ timeSec, text: entryText });
+              }
+              p = afterText + 4;
+            } else {
+              break;
+            }
+          }
+
+          if (lines.length > 0) {
+            // Convert to standard LRC
+            const lrcLines = lines.map(l => {
+              const m = Math.floor(l.timeSec / 60);
+              const s = Math.floor(l.timeSec % 60);
+              const cs = Math.floor((l.timeSec % 1) * 100);
+              const mm = m.toString().padStart(2, '0');
+              const ss = s.toString().padStart(2, '0');
+              const xx = cs.toString().padStart(2, '0');
+              return `[${mm}:${ss}.${xx}] ${l.text}`;
+            });
+            metadata.embeddedSyncedLyrics = lrcLines.join('\n');
+          }
+        } catch (_) {}
       } else if (frameId === 'APIC' || frameId === 'PIC') {
         try {
           let pos = 1; // start after encoding
@@ -176,6 +280,16 @@ function parseID3v2(buffer: ArrayBuffer): Partial<ParsedAudioMetadata> | null {
             const imgBytes = frameData.subarray(pos);
             const blob = new Blob([imgBytes], { type: mime || 'image/jpeg' });
             metadata.coverArtUrl = URL.createObjectURL(blob);
+
+            // Generate compact Base64 data URL for persistent caching across reloads
+            if (imgBytes.length <= 600000) {
+              let binary = '';
+              const len = imgBytes.byteLength;
+              for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(imgBytes[i]);
+              }
+              metadata.coverArtDataUrl = `data:${mime || 'image/jpeg'};base64,${btoa(binary)}`;
+            }
           }
         } catch (_) {}
       }
@@ -299,12 +413,22 @@ export async function parseAudioFileMetadata(file: File): Promise<ParsedAudioMet
   const fallback = guessTagsFromFileName(file.name, file.webkitRelativePath || file.name);
 
   try {
-    // Read first 256KB for ID3v2 header and tags (covers most ID3v2 tags including small covers)
-    const headerSlice = await file.slice(0, Math.min(file.size, 262144)).arrayBuffer();
+    // Read initial 256KB for ID3v2 header
+    let headerSlice = await file.slice(0, Math.min(file.size, 262144)).arrayBuffer();
+    const bytes = new Uint8Array(headerSlice);
+
+    // If ID3v2 tag is present and claims a larger size, slice enough buffer to cover it
+    if (bytes.length >= 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+      const fullTagSize = decodeSyncSafeInt(bytes, 6) + 10;
+      if (fullTagSize > 262144 && fullTagSize < 4194304) {
+        headerSlice = await file.slice(0, Math.min(file.size, fullTagSize + 1024)).arrayBuffer();
+      }
+    }
+
     const v2 = parseID3v2(headerSlice);
 
-    // If ID3v2 had title and artist, return merged metadata
-    if (v2 && (v2.title || v2.artist)) {
+    // If ID3v2 had title and artist or any embedded metadata
+    if (v2) {
       return {
         title: v2.title || fallback.title,
         artist: v2.artist || fallback.artist,
@@ -313,6 +437,9 @@ export async function parseAudioFileMetadata(file: File): Promise<ParsedAudioMet
         genre: v2.genre || fallback.genre,
         trackNumber: v2.trackNumber || fallback.trackNumber,
         coverArtUrl: v2.coverArtUrl || fallback.coverArtUrl,
+        coverArtDataUrl: v2.coverArtDataUrl,
+        embeddedSyncedLyrics: v2.embeddedSyncedLyrics,
+        embeddedStaticLyrics: v2.embeddedStaticLyrics,
       };
     }
 

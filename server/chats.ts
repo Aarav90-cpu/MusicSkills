@@ -316,6 +316,152 @@ export function parseLrcToLyricsMap(lrcText: string): Record<string, string[]> {
   return Object.keys(sections).length > 0 ? sections : { 'Main Lyrics': ['[Instrumental / Synced audio track]'] };
 }
 
+/**
+ * Extract embedded ID3 metadata (APIC cover art and USLT / SYLT lyrics) directly from audio bytes or file path
+ */
+export function extractEmbeddedId3(bufferOrPath: Buffer | string): { cover?: Buffer; mime?: string; lyrics?: string } {
+  try {
+    let buf: Buffer;
+    if (typeof bufferOrPath === 'string') {
+      if (!fs.existsSync(bufferOrPath)) return {};
+      const fd = fs.openSync(bufferOrPath, 'r');
+      buf = Buffer.alloc(1048576); // Read up to 1MB
+      const bytesRead = fs.readSync(fd, buf, 0, 1048576, 0);
+      fs.closeSync(fd);
+      buf = buf.subarray(0, bytesRead);
+    } else {
+      buf = bufferOrPath.subarray(0, Math.min(bufferOrPath.length, 1048576));
+    }
+
+    if (buf.length < 10 || buf[0] !== 0x49 || buf[1] !== 0x44 || buf[2] !== 0x33) {
+      return {};
+    }
+
+    const versionMajor = buf[3];
+    const flags = buf[5];
+    const tagSize = ((buf[6] & 0x7f) << 21) | ((buf[7] & 0x7f) << 14) | ((buf[8] & 0x7f) << 7) | (buf[9] & 0x7f);
+
+    let offset = 10;
+    if (flags & 0x40 && offset < buf.length) {
+      const extSize = versionMajor === 4
+        ? (((buf[offset] & 0x7f) << 21) | ((buf[offset + 1] & 0x7f) << 14) | ((buf[offset + 2] & 0x7f) << 7) | (buf[offset + 3] & 0x7f))
+        : ((buf[offset] << 24) | (buf[offset + 1] << 16) | (buf[offset + 2] << 8) | buf[offset + 3]);
+      offset += extSize;
+    }
+
+    let cover: Buffer | undefined;
+    let mime: string | undefined;
+    let lyrics: string | undefined;
+
+    const maxOffset = Math.min(buf.length, 10 + tagSize);
+
+    while (offset + 10 <= maxOffset) {
+      let frameId = '';
+      for (let i = 0; i < 4; i++) {
+        const c = buf[offset + i];
+        if (c >= 32 && c <= 126) frameId += String.fromCharCode(c);
+        else break;
+      }
+      if (frameId.length < 4) break;
+
+      const frameSize = versionMajor === 4
+        ? (((buf[offset + 4] & 0x7f) << 21) | ((buf[offset + 5] & 0x7f) << 14) | ((buf[offset + 6] & 0x7f) << 7) | (buf[offset + 7] & 0x7f))
+        : ((buf[offset + 4] << 24) | (buf[offset + 5] << 16) | (buf[offset + 6] << 8) | buf[offset + 7]);
+
+      if (frameSize <= 0 || offset + 10 + frameSize > buf.length) break;
+
+      const frameData = buf.subarray(offset + 10, offset + 10 + frameSize);
+
+      if ((frameId === 'APIC' || frameId === 'PIC') && !cover && frameData.length > 10) {
+        try {
+          const enc = frameData[0];
+          let pos = 1;
+          let detectedMime = 'image/jpeg';
+
+          if (versionMajor === 2) {
+            const fmt = frameData.subarray(1, 4).toString('ascii').toUpperCase();
+            detectedMime = fmt === 'PNG' ? 'image/png' : 'image/jpeg';
+            pos += 3;
+          } else {
+            let mimeEnd = pos;
+            while (mimeEnd < frameData.length && frameData[mimeEnd] !== 0) {
+              mimeEnd++;
+            }
+            if (mimeEnd > pos) {
+              detectedMime = frameData.subarray(pos, mimeEnd).toString('latin1');
+            }
+            pos = mimeEnd + 1;
+          }
+
+          pos++; // skip picture type
+
+          // skip descriptor
+          if (enc === 1 || enc === 2) {
+            while (pos + 1 < frameData.length) {
+              if (frameData[pos] === 0 && frameData[pos + 1] === 0) {
+                pos += 2;
+                break;
+              }
+              pos += 2;
+            }
+          } else {
+            while (pos < frameData.length && frameData[pos] !== 0) {
+              pos++;
+            }
+            pos++;
+          }
+
+          if (pos < frameData.length) {
+            cover = Buffer.from(frameData.subarray(pos));
+            mime = detectedMime;
+          }
+        } catch (_) {}
+      } else if ((frameId === 'USLT' || frameId === 'ULT') && !lyrics && frameData.length > 5) {
+        try {
+          const enc = frameData[0];
+          let descEnd = 4; // skip enc (1) + lang (3)
+          if (enc === 1 || enc === 2) {
+            while (descEnd + 1 < frameData.length) {
+              if (frameData[descEnd] === 0 && frameData[descEnd + 1] === 0) {
+                descEnd += 2;
+                break;
+              }
+              descEnd += 2;
+            }
+          } else {
+            while (descEnd < frameData.length && frameData[descEnd] !== 0) {
+              descEnd++;
+            }
+            descEnd++;
+          }
+
+          if (descEnd < frameData.length) {
+            const lyrBuf = frameData.subarray(descEnd);
+            let text = '';
+            if (enc === 1 || enc === 2) {
+              text = lyrBuf.toString('utf16le');
+            } else if (enc === 3) {
+              text = lyrBuf.toString('utf-8');
+            } else {
+              text = lyrBuf.toString('latin1');
+            }
+            text = text.replace(/\0+$/, '').trim();
+            if (text) {
+              lyrics = text;
+            }
+          }
+        } catch (_) {}
+      }
+
+      offset += 10 + frameSize;
+    }
+
+    return { cover, mime, lyrics };
+  } catch (_) {
+    return {};
+  }
+}
+
 export async function importCustomSong(params: {
   title: string;
   artist?: string;
@@ -343,13 +489,20 @@ export async function importCustomSong(params: {
   const audioFileName = `v1_custom${ext}`;
   fs.writeFileSync(path.join(dirPath, audioFileName), audioBuffer);
 
+  // Extract embedded ID3 metadata (APIC cover art and USLT lyrics)
+  const embedded = extractEmbeddedId3(audioBuffer);
+  if (embedded.cover) {
+    fs.writeFileSync(path.join(dirPath, 'cover.jpg'), embedded.cover);
+  }
+
   let lrcFileName = '';
   let lyricsMap: Record<string, string[]> = {};
+  const effectiveLyrics = (lrcContent && lrcContent.trim()) ? lrcContent.trim() : embedded.lyrics;
 
-  if (lrcContent && lrcContent.trim()) {
+  if (effectiveLyrics && effectiveLyrics.trim()) {
     lrcFileName = 'v1_custom.lrc';
-    fs.writeFileSync(path.join(dirPath, lrcFileName), lrcContent, 'utf-8');
-    lyricsMap = parseLrcToLyricsMap(lrcContent);
+    fs.writeFileSync(path.join(dirPath, lrcFileName), effectiveLyrics, 'utf-8');
+    lyricsMap = parseLrcToLyricsMap(effectiveLyrics);
   } else {
     lyricsMap = { 'Lyrics': ['[Ready for lyrics synchronization]'] };
   }
@@ -370,5 +523,61 @@ export async function importCustomSong(params: {
 
   saveChat(newChat);
   return newChat;
+}
+
+/**
+ * Scan all existing chats in .chats/ and backfill embedded cover art and lyrics from audio files
+ */
+export function backfillChatsMetadata(): { coverCount: number; lyricsCount: number } {
+  const chatsDir = getChatsDir();
+  if (!fs.existsSync(chatsDir)) return { coverCount: 0, lyricsCount: 0 };
+  const entries = fs.readdirSync(chatsDir, { withFileTypes: true });
+
+  let coverCount = 0;
+  let lyricsCount = 0;
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dirPath = path.join(chatsDir, entry.name);
+    const metaPath = path.join(dirPath, 'chat.json');
+    if (!fs.existsSync(metaPath)) continue;
+
+    const files = fs.readdirSync(dirPath);
+    const mp3Files = files.filter(f => f.endsWith('.mp3'));
+    if (mp3Files.length === 0) continue;
+
+    const targetMp3 = mp3Files.find(f => f === 'v1_custom.mp3') || mp3Files[0];
+    const mp3Path = path.join(dirPath, targetMp3);
+    const coverPath = path.join(dirPath, 'cover.jpg');
+    const lrcPath = path.join(dirPath, 'v1_custom.lrc');
+
+    const needsCover = !fs.existsSync(coverPath);
+    const needsLyrics = !fs.existsSync(lrcPath);
+
+    if (needsCover || needsLyrics) {
+      try {
+        const embedded = extractEmbeddedId3(mp3Path);
+        if (needsCover && embedded.cover) {
+          fs.writeFileSync(coverPath, embedded.cover);
+          coverCount++;
+        }
+        if (needsLyrics && embedded.lyrics) {
+          fs.writeFileSync(lrcPath, embedded.lyrics, 'utf-8');
+          lyricsCount++;
+
+          try {
+            const chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
+            chat.lyrics = parseLrcToLyricsMap(embedded.lyrics);
+            if (chat.versions.length > 0) {
+              chat.versions[chat.versions.length - 1].leadSheetFile = 'v1_custom.lrc';
+            }
+            saveChat(chat);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+  }
+
+  return { coverCount, lyricsCount };
 }
 

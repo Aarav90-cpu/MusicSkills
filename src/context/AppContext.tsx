@@ -220,16 +220,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const playTrack = (track: PlayerTrack) => {
-    // 1. Sanitize mp3Url to ensure it's never empty or ending with slash
+    // 1. Sanitize mp3Url to ensure it's never empty, ending with slash, or a dead blob URL
     let safeMp3Url = track.mp3Url;
-    if (!safeMp3Url || safeMp3Url.endsWith('/') || safeMp3Url.endsWith('/undefined') || safeMp3Url.endsWith('/null')) {
-      const cleanName = `${(track.songName || 'song').toLowerCase().replace(/[^a-z0-9]+/g, '-')}_master.mp3`;
-      safeMp3Url = `/api/audio/${track.chatId}/${cleanName}`;
+    if (
+      !safeMp3Url ||
+      safeMp3Url.endsWith('/') ||
+      safeMp3Url.endsWith('/undefined') ||
+      safeMp3Url.endsWith('/null')
+    ) {
+      const cleanTarget = encodeURIComponent(track.chatId || track.songName);
+      const titleParam = encodeURIComponent(track.songName || '');
+      safeMp3Url = `/api/audio/${cleanTarget}/v1_custom.mp3?title=${titleParam}`;
     }
+
+    const coverUrl =
+      track.coverArtUrl && !track.coverArtUrl.startsWith('blob:')
+        ? track.coverArtUrl
+        : `/api/audio/${encodeURIComponent(track.chatId || track.songName)}/cover?title=${encodeURIComponent(track.songName)}`;
 
     const normalizedTrack: PlayerTrack = {
       ...track,
       mp3Url: safeMp3Url,
+      coverArtUrl: coverUrl,
       durationSec: track.durationSec || 180,
     };
 
@@ -291,9 +303,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else if (err.name === 'AbortError') {
               // Harmless interruption by user rapidly selecting another track
             } else {
-              console.error('Audio playback error:', err);
-              showSnackbar(`Could not stream audio for "${track.songName}".`);
-              setIsPlaying(false);
+              console.error('Audio playback error, attempting title-based stream fallback:', err);
+              const fallbackUrl = `/api/audio/${encodeURIComponent(track.songName)}/v1_custom.mp3?title=${encodeURIComponent(track.songName)}`;
+              if (audioRef.current && safeMp3Url !== fallbackUrl) {
+                audioRef.current.src = fallbackUrl;
+                audioRef.current
+                  .play()
+                  .then(() => setIsPlaying(true))
+                  .catch(fallbackErr => {
+                    console.error('Audio stream fallback also failed:', fallbackErr);
+                    showSnackbar(`Could not stream audio for "${track.songName}".`);
+                    setIsPlaying(false);
+                  });
+              } else {
+                showSnackbar(`Could not stream audio for "${track.songName}".`);
+                setIsPlaying(false);
+              }
             }
           });
       }

@@ -73,6 +73,8 @@ export const StatsPage: React.FC = () => {
         }
 
         const mp3 = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${c.folderName}_${latest.version || 'v1'}.mp3`);
+        const coverUrl = `/api/audio/${c.id}/cover?title=${encodeURIComponent(c.name)}`;
+        const hasLrc = latest.leadSheetFile && latest.leadSheetFile.endsWith('.lrc');
 
         return {
           id: c.id,
@@ -85,10 +87,12 @@ export const StatsPage: React.FC = () => {
           mood: (c.style?.moods && c.style?.moods[0]) || 'energetic',
           purpose: (c.style?.purposes && c.style?.purposes[0]) || 'creative',
           durationSec: latest.durationSec || 180,
-          audioUrl: `/api/audio/${c.id}/${mp3}`,
+          audioUrl: `/api/audio/${c.id}/${mp3}?title=${encodeURIComponent(c.name)}`,
+          coverArtUrl: coverUrl,
           dateAdded: c.createdAt,
           fileSource: 'generated',
-          lyricsSource: 'local_synced',
+          embeddedSyncedLyrics: hasLrc ? '' : undefined,
+          lyricsSource: hasLrc ? 'embedded_synced' : 'none',
           customTags: [],
         };
       });
@@ -183,34 +187,37 @@ export const StatsPage: React.FC = () => {
     recordGenrePlay(track.genre);
 
     // Resolve audio URL: prefer active live in-memory audio object if available
-    let resolvedAudioUrl = getLiveAudioUrl(track.id) || track.audioUrl;
-
-    // Check if dead blob URL from previous sessions and recover
-    if (resolvedAudioUrl && resolvedAudioUrl.startsWith('blob:') && !getLiveAudioUrl(track.id)) {
-      const matchingChat = chats.find(
-        c => c.id === track.id || c.name.trim().toLowerCase() === track.title.trim().toLowerCase()
-      );
-      if (matchingChat && matchingChat.versions && matchingChat.versions.length > 0) {
-        const v = matchingChat.versions[matchingChat.versions.length - 1];
-        const mp3 = v.mp3File || `${matchingChat.folderName || matchingChat.id}_v1.mp3`;
-        resolvedAudioUrl = `/api/audio/${matchingChat.id}/${mp3}`;
-      } else if (!track.id.startsWith('imported-')) {
-        resolvedAudioUrl = `/api/audio/${track.id}/v1_custom.mp3`;
+    let resolvedAudioUrl = getLiveAudioUrl(track.id);
+    if (!resolvedAudioUrl) {
+      if (track.audioUrl && !track.audioUrl.startsWith('blob:')) {
+        resolvedAudioUrl = track.audioUrl;
+      } else {
+        // Guaranteed permanent server streaming route with title resolution
+        resolvedAudioUrl = `/api/audio/${encodeURIComponent(track.id)}/v1_custom.mp3?title=${encodeURIComponent(track.title)}`;
       }
     }
+
+    // Resolve lyrics with Priority 1: Engraved lyrics in the audio file itself
+    const resolvedLyrics = resolveTrackLyrics(track);
+    const syncedLyricsText = resolvedLyrics.type === 'synced' ? resolvedLyrics.content : undefined;
+
+    // Use embedded metadata cover art as main cover
+    const coverUrl =
+      track.coverArtUrl ||
+      `/api/audio/${encodeURIComponent(track.id)}/cover?title=${encodeURIComponent(track.title)}`;
 
     playTrack({
       chatId: track.id,
       songName: track.title,
       artist: track.artist,
       album: track.album,
-      coverArtUrl: track.coverArtUrl,
+      coverArtUrl: coverUrl,
       version: 'v1',
       mp3Url: resolvedAudioUrl,
       midiUrl: resolvedAudioUrl.endsWith('.mid') ? resolvedAudioUrl : '',
       durationSec: track.durationSec,
       bpm: track.bpm || 120,
-      syncedLyrics: track.localSyncedLyrics || track.onlineSyncedLyrics,
+      syncedLyrics: syncedLyricsText,
       lyrics: {},
     });
     showSnackbar(`Playing "${track.title}" by ${track.artist}`);
@@ -532,9 +539,40 @@ export const StatsPage: React.FC = () => {
                       </span>
                     </button>
 
-                    {/* Title */}
-                    <div style={{ fontWeight: 600, color: 'var(--color-text-high)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {track.title}
+                    {/* Title + Metadata Cover Thumbnail */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '4px',
+                          backgroundColor: 'var(--color-container)',
+                          border: '1px solid var(--color-outline)',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {track.coverArtUrl ? (
+                          <img
+                            src={track.coverArtUrl}
+                            alt=""
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={e => {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
+                            music_note
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontWeight: 600, color: 'var(--color-text-high)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {track.title}
+                      </span>
                     </div>
 
                     {/* Artist */}
@@ -560,20 +598,24 @@ export const StatsPage: React.FC = () => {
                           fontSize: '10px',
                           fontWeight: 700,
                           backgroundColor:
-                            resolved.source === 'local_synced'
-                              ? 'rgba(40, 200, 100, 0.2)'
-                              : resolved.source === 'online_synced'
+                            resolved.source === 'embedded_synced' || resolved.source === 'embedded_static'
+                              ? 'rgba(40, 200, 100, 0.25)'
+                              : resolved.source === 'local_synced'
                               ? 'rgba(60, 196, 178, 0.2)'
+                              : resolved.source === 'online_synced'
+                              ? 'rgba(183, 166, 255, 0.2)'
                               : resolved.source === 'offline_static'
                               ? 'rgba(255, 176, 32, 0.2)'
                               : resolved.source === 'online_static'
-                              ? 'rgba(183, 166, 255, 0.2)'
+                              ? 'rgba(183, 166, 255, 0.15)'
                               : 'var(--color-container)',
                           color:
-                            resolved.source === 'local_synced'
+                            resolved.source === 'embedded_synced' || resolved.source === 'embedded_static'
                               ? '#28c864'
-                              : resolved.source === 'online_synced'
+                              : resolved.source === 'local_synced'
                               ? '#3CC4B2'
+                              : resolved.source === 'online_synced'
+                              ? '#B7A6FF'
                               : resolved.source === 'offline_static'
                               ? '#FFB020'
                               : resolved.source === 'online_static'
@@ -585,14 +627,18 @@ export const StatsPage: React.FC = () => {
                         }}
                         title={resolved.label}
                       >
-                        {resolved.source === 'local_synced'
-                          ? 'P1 Local Synced'
+                        {resolved.source === 'embedded_synced'
+                          ? 'P1 Engraved Synced'
+                          : resolved.source === 'embedded_static'
+                          ? 'P1 Engraved Lyrics'
+                          : resolved.source === 'local_synced'
+                          ? 'P2 Local Synced'
                           : resolved.source === 'online_synced'
-                          ? 'P2 Online Cached'
+                          ? 'P3 Online Cached'
                           : resolved.source === 'offline_static'
-                          ? 'P3 Offline Static'
+                          ? 'P4 Local Static'
                           : resolved.source === 'online_static'
-                          ? 'P4 Online Static'
+                          ? 'P5 Online Static'
                           : 'No Lyrics'}
                       </span>
                     </div>

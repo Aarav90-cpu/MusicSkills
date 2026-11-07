@@ -72,6 +72,23 @@ export const ScrollingLyricsPage: React.FC = () => {
       return;
     }
 
+    // If activeChat has an engraved/synced leadSheetFile (.lrc), load it
+    if (activeChat && activeChat.versions && activeChat.versions.length > 0) {
+      const latest = activeChat.versions[activeChat.versions.length - 1];
+      if (latest.leadSheetFile && latest.leadSheetFile.endsWith('.lrc')) {
+        fetch(`/api/audio/${activeChat.id}/${latest.leadSheetFile}?title=${encodeURIComponent(activeChat.name)}`)
+          .then(res => (res.ok ? res.text() : ''))
+          .then(lrcText => {
+            if (lrcText && lrcText.trim()) {
+              const parsed = parseLRC(lrcText);
+              setSyncedLines(parsed.lines);
+            }
+          })
+          .catch(() => {});
+        return;
+      }
+    }
+
     if (activeChat && Object.keys(activeChat.lyrics).length > 0) {
       const converted = convertProjectLyricsToSynced(
         activeChat.lyrics,
@@ -472,49 +489,85 @@ export const ScrollingLyricsPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Project Dropdown Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>Song:</span>
-            <select
-              value={activeChatId || ''}
-              onChange={e => {
-                const id = e.target.value;
-                if (id) {
-                  setActiveChatId(id);
-                  const selected = chats.find(c => c.id === id);
-                  if (selected && selected.versions.length > 0) {
-                    const latest = selected.versions[selected.versions.length - 1];
-                    const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${selected.folderName}_${latest.version || 'v1'}.mp3`);
-                    playTrack({
-                      chatId: selected.id,
-                      songName: selected.name,
-                      version: latest.version,
-                      mp3Url: `/api/audio/${selected.id}/${mp3File}`,
-                      midiUrl: latest.midiFile ? `/api/audio/${selected.id}/${latest.midiFile}` : '',
-                      durationSec: latest.durationSec || 180,
-                      lyrics: selected.lyrics,
-                      bpm: selected.style.bpm || 120,
-                    });
-                  }
-                }
-              }}
+          {/* Project Dropdown Selector with Embedded Metadata Cover Art */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
               style={{
-                backgroundColor: 'var(--color-surface-container)',
-                color: 'var(--color-text)',
+                width: '34px',
+                height: '34px',
+                borderRadius: '6px',
+                backgroundColor: 'var(--color-container)',
                 border: '1px solid var(--color-outline)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '4px 8px',
-                fontSize: '13px',
-                maxWidth: '220px',
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <option value="">{customAudioFile ? customTitle : '-- Choose Library Track --'}</option>
-              {chats.map(chat => (
-                <option key={chat.id} value={chat.id}>
-                  {chat.name} ({chat.style.genre})
-                </option>
-              ))}
-            </select>
+              {(currentTrack?.coverArtUrl || activeChatId) ? (
+                <img
+                  src={currentTrack?.coverArtUrl || `/api/audio/${activeChatId}/cover`}
+                  alt=""
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={e => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
+                  album
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>Song:</span>
+              <select
+                value={activeChatId || ''}
+                onChange={e => {
+                  const id = e.target.value;
+                  if (id) {
+                    setActiveChatId(id);
+                    const selected = chats.find(c => c.id === id);
+                    if (selected && selected.versions.length > 0) {
+                      const latest = selected.versions[selected.versions.length - 1];
+                      const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${selected.folderName}_${latest.version || 'v1'}.mp3`);
+                      const coverUrl = `/api/audio/${selected.id}/cover?title=${encodeURIComponent(selected.name)}`;
+                      playTrack({
+                        chatId: selected.id,
+                        songName: selected.name,
+                        artist: selected.style?.description,
+                        album: selected.style?.genre,
+                        coverArtUrl: coverUrl,
+                        version: latest.version,
+                        mp3Url: `/api/audio/${selected.id}/${mp3File}?title=${encodeURIComponent(selected.name)}`,
+                        midiUrl: latest.midiFile ? `/api/audio/${selected.id}/${latest.midiFile}` : '',
+                        durationSec: latest.durationSec || 180,
+                        lyrics: selected.lyrics,
+                        bpm: selected.style.bpm || 120,
+                      });
+                    }
+                  }
+                }}
+                style={{
+                  backgroundColor: 'var(--color-surface-container)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-outline)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '4px 8px',
+                  fontSize: '13px',
+                  maxWidth: '220px',
+                }}
+              >
+                <option value="">{customAudioFile ? customTitle : '-- Choose Library Track --'}</option>
+                {chats.map(chat => (
+                  <option key={chat.id} value={chat.id}>
+                    {chat.name} ({chat.style.genre})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 

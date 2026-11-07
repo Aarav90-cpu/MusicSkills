@@ -15,6 +15,8 @@ export interface CustomMetadataTag {
 }
 
 export type LyricsPrioritySource =
+  | 'embedded_synced'
+  | 'embedded_static'
   | 'local_synced'
   | 'online_synced'
   | 'offline_static'
@@ -46,11 +48,13 @@ export interface LibraryTrack {
   filePath?: string;
   fileSize?: number;
 
-  // 4-Tier Lyrics Resolution Priority
-  localSyncedLyrics?: string;   // Priority 1: Local Synced (.lrc text)
-  onlineSyncedLyrics?: string;  // Priority 2: Online Synced (from LRCLIB, cached)
-  offlineStaticLyrics?: string; // Priority 3: Offline Static (plain text)
-  onlineStaticLyrics?: string;  // Priority 4: Online Static (from LRCLIB, cached)
+  // 6-Tier Lyrics Resolution Priority (Engraved lyrics in audio file have FIRST PRIORITY)
+  embeddedSyncedLyrics?: string; // Priority 1: Engraved Synced in Audio File (USLT with timestamps or SYLT)
+  embeddedStaticLyrics?: string; // Priority 2: Engraved Static in Audio File (USLT plain text)
+  localSyncedLyrics?: string;    // Priority 3: Companion Local Synced (.lrc text)
+  onlineSyncedLyrics?: string;   // Priority 4: Online Synced (from LRCLIB, cached)
+  offlineStaticLyrics?: string;  // Priority 5: Companion Offline Static (plain text)
+  onlineStaticLyrics?: string;   // Priority 6: Online Static (from LRCLIB, cached)
 
   lyricsSource: LyricsPrioritySource;
   lyricsCachedAt?: string;
@@ -116,11 +120,15 @@ export function loadLibraryTracks(): LibraryTrack[] {
           if (liveBlobMap.has(t.id)) {
             t.audioUrl = liveBlobMap.get(t.id)!;
           } else if (t.audioUrl && t.audioUrl.startsWith('blob:')) {
-            // If track was registered on server, convert to permanent server route
-            if (t.id && !t.id.startsWith('imported-')) {
-              t.audioUrl = `/api/audio/${t.id}/v1_custom.mp3`;
-            }
+            // Dead blob URL - convert to permanent server audio route with title fallback
+            t.audioUrl = `/api/audio/${t.id}/v1_custom.mp3?title=${encodeURIComponent(t.title)}`;
           }
+
+          // If coverArtUrl is missing or an expired blob URL, convert to permanent server cover route
+          if (!t.coverArtUrl || t.coverArtUrl.startsWith('blob:')) {
+            t.coverArtUrl = `/api/audio/${t.id}/cover?title=${encodeURIComponent(t.title)}`;
+          }
+
           return t;
         });
       }
@@ -182,11 +190,13 @@ export function setCachedLyrics(trackName: string, artistName: string, syncedLyr
   saveLyricsCache(cache);
 }
 
-// --- 4-TIER LYRICS RESOLUTION PRIORITY ---
-// 1st Priority: Local Synced (.lrc with [mm:ss.xx])
-// 2nd Priority: Online Synced (LRCLIB synced lyrics, cached locally)
-// 3rd Priority: Offline Static (plain text file or lyrics sheet)
-// 4th Priority: Online Static (LRCLIB plain lyrics, cached locally)
+// --- 6-TIER LYRICS RESOLUTION PRIORITY ---
+// 1st Priority: Engraved Synced Lyrics in Audio File itself (USLT with [mm:ss.xx] timestamps or SYLT)
+// 2nd Priority: Engraved Static Lyrics in Audio File itself (USLT plain text)
+// 3rd Priority: Local Companion Synced (.lrc file with [mm:ss.xx])
+// 4th Priority: Online Synced (LRCLIB synced lyrics, cached locally)
+// 5th Priority: Local Companion Static (.txt plain text file)
+// 6th Priority: Online Static (LRCLIB plain lyrics, cached locally)
 
 export function resolveTrackLyrics(track: LibraryTrack): {
   type: 'synced' | 'plain' | 'none';
@@ -194,43 +204,63 @@ export function resolveTrackLyrics(track: LibraryTrack): {
   source: LyricsPrioritySource;
   label: string;
 } {
-  // Priority 1: Local Synced
+  // Priority 1: Engraved Synced Lyrics in audio file
+  if (track.embeddedSyncedLyrics && track.embeddedSyncedLyrics.trim().length > 0) {
+    return {
+      type: 'synced',
+      content: track.embeddedSyncedLyrics.trim(),
+      source: 'embedded_synced',
+      label: 'Priority 1: Engraved Synced (In Audio File)',
+    };
+  }
+
+  // Priority 2: Engraved Static Lyrics in audio file
+  if (track.embeddedStaticLyrics && track.embeddedStaticLyrics.trim().length > 0) {
+    return {
+      type: 'plain',
+      content: track.embeddedStaticLyrics.trim(),
+      source: 'embedded_static',
+      label: 'Priority 1: Engraved Lyrics (In Audio File)',
+    };
+  }
+
+  // Priority 3: Local Companion Synced (.lrc text)
   if (track.localSyncedLyrics && track.localSyncedLyrics.trim().length > 0) {
     return {
       type: 'synced',
       content: track.localSyncedLyrics.trim(),
       source: 'local_synced',
-      label: 'Local Synced (Priority 1)',
+      label: 'Priority 2: Local Companion .lrc Synced',
     };
   }
 
-  // Priority 2: Online Synced (cached)
+  // Priority 4: Online Synced (cached)
   if (track.onlineSyncedLyrics && track.onlineSyncedLyrics.trim().length > 0) {
     return {
       type: 'synced',
       content: track.onlineSyncedLyrics.trim(),
       source: 'online_synced',
-      label: 'Online Synced - Cached (Priority 2)',
+      label: 'Priority 3: Online Synced (Cached)',
     };
   }
 
-  // Priority 3: Offline Static
+  // Priority 5: Local Companion Static (.txt file)
   if (track.offlineStaticLyrics && track.offlineStaticLyrics.trim().length > 0) {
     return {
       type: 'plain',
       content: track.offlineStaticLyrics.trim(),
       source: 'offline_static',
-      label: 'Offline Static (Priority 3)',
+      label: 'Priority 4: Local Companion .txt Static',
     };
   }
 
-  // Priority 4: Online Static (cached)
+  // Priority 6: Online Static (cached)
   if (track.onlineStaticLyrics && track.onlineStaticLyrics.trim().length > 0) {
     return {
       type: 'plain',
       content: track.onlineStaticLyrics.trim(),
       source: 'online_static',
-      label: 'Online Static - Cached (Priority 4)',
+      label: 'Priority 5: Online Static (Cached)',
     };
   }
 
@@ -248,9 +278,11 @@ export async function fetchAndCacheLyricsForTrack(
   track: LibraryTrack,
   force: boolean = false
 ): Promise<LibraryTrack> {
-  // Check if we already have local synced lyrics
-  if (!force && track.localSyncedLyrics) {
-    track.lyricsSource = 'local_synced';
+  // Check if we already have engraved lyrics in audio file or local companion synced lyrics
+  if (!force && (track.embeddedSyncedLyrics || track.embeddedStaticLyrics || track.localSyncedLyrics)) {
+    if (track.embeddedSyncedLyrics) track.lyricsSource = 'embedded_synced';
+    else if (track.embeddedStaticLyrics) track.lyricsSource = 'embedded_static';
+    else if (track.localSyncedLyrics) track.lyricsSource = 'local_synced';
     return track;
   }
 
@@ -489,11 +521,16 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       } catch (_) {}
     }
 
-    // Match Cover Art (either embedded in ID3, or companion image in folder)
-    let coverArtUrl: string | undefined = id3Meta.coverArtUrl;
-    const companionImg = imageMap.get(dir) || imageMap.get(fullKey) || imageMap.get(baseName.toLowerCase());
-    if (companionImg) {
-      coverArtUrl = URL.createObjectURL(companionImg);
+    // Match Cover Art (embedded ID3 metadata is MAIN PRIORITY!)
+    let coverArtUrl: string | undefined = id3Meta.coverArtDataUrl || id3Meta.coverArtUrl;
+    if (!coverArtUrl) {
+      // Fallback to companion image in folder only if audio does not contain embedded art
+      const companionImg = imageMap.get(dir) || imageMap.get(fullKey) || imageMap.get(baseName.toLowerCase());
+      if (companionImg) {
+        coverArtUrl = URL.createObjectURL(companionImg);
+        matchedCoverCount++;
+      }
+    } else {
       matchedCoverCount++;
     }
 
@@ -515,9 +552,13 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       formData.append('bpm', '120');
       formData.append('durationSec', (durationSec || 180).toString());
 
-      if (localSyncedLyrics) {
-        const lrcBlob = new Blob([localSyncedLyrics], { type: 'text/plain' });
+      // Send engraved lyrics (Priority 1) or companion LRC to server
+      const syncedToSend = id3Meta.embeddedSyncedLyrics || localSyncedLyrics;
+      if (syncedToSend) {
+        const lrcBlob = new Blob([syncedToSend], { type: 'text/plain' });
         formData.append('lrc', lrcBlob, `${id3Meta.title}.lrc`);
+      } else if (id3Meta.embeddedStaticLyrics) {
+        formData.append('lrcText', id3Meta.embeddedStaticLyrics);
       }
 
       const uploadRes = await fetch('/api/custom-song/import', {
@@ -530,7 +571,7 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
         if (data.chat && data.chat.versions && data.chat.versions.length > 0) {
           trackChatId = data.chat.id;
           const targetMp3 = data.chat.versions[data.chat.versions.length - 1].mp3File;
-          permanentAudioUrl = `/api/audio/${trackChatId}/${targetMp3}`;
+          permanentAudioUrl = `/api/audio/${trackChatId}/${targetMp3}?title=${encodeURIComponent(id3Meta.title)}`;
         }
       }
     } catch (uploadErr) {
@@ -555,15 +596,21 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       year: id3Meta.year,
       durationSec: durationSec || 180,
       audioUrl: finalAudioUrl,
-      coverArtUrl,
+      coverArtUrl: coverArtUrl || `/api/audio/${trackChatId}/cover?title=${encodeURIComponent(id3Meta.title)}`,
       dateAdded: new Date().toISOString(),
       fileSource: 'imported',
       fileName: audio.name,
       filePath: relPath,
       fileSize: audio.size,
+      embeddedSyncedLyrics: id3Meta.embeddedSyncedLyrics,
+      embeddedStaticLyrics: id3Meta.embeddedStaticLyrics,
       localSyncedLyrics,
       offlineStaticLyrics,
-      lyricsSource: localSyncedLyrics
+      lyricsSource: id3Meta.embeddedSyncedLyrics
+        ? 'embedded_synced'
+        : id3Meta.embeddedStaticLyrics
+        ? 'embedded_static'
+        : localSyncedLyrics
         ? 'local_synced'
         : offlineStaticLyrics
         ? 'offline_static'
@@ -571,8 +618,8 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       customTags: [],
     };
 
-    // 4. If no local lyrics, automatically query and cache from LRCLIB using Title + Artist
-    if (!initialTrack.localSyncedLyrics && !initialTrack.offlineStaticLyrics) {
+    // 4. If no engraved or local companion lyrics, query and cache from LRCLIB
+    if (initialTrack.lyricsSource === 'none') {
       await fetchAndCacheLyricsForTrack(initialTrack, false);
     }
 
