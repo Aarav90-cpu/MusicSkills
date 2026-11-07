@@ -9,6 +9,9 @@ interface DawInspectorPanelProps {
   onDeleteClip: (clipId: string) => void;
   onDeleteTrack: (trackId: string) => void;
   onOpenEffectsRack: (trackId: string) => void;
+  onDuplicateClip?: (clipId: string) => void;
+  onNormalizeClip?: (clipId: string) => void;
+  onQuantizeClipNotes?: (clipId: string) => void;
 }
 
 export const DawInspectorPanel: React.FC<DawInspectorPanelProps> = ({
@@ -19,6 +22,9 @@ export const DawInspectorPanel: React.FC<DawInspectorPanelProps> = ({
   onDeleteClip,
   onDeleteTrack,
   onOpenEffectsRack,
+  onDuplicateClip,
+  onNormalizeClip,
+  onQuantizeClipNotes,
 }) => {
   return (
     <aside
@@ -130,6 +136,25 @@ export const DawInspectorPanel: React.FC<DawInspectorPanelProps> = ({
               </div>
             </div>
 
+            {/* Clip Gain Offset */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '11px', color: '#9CA3AF' }}>Volume Gain (dB)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="range"
+                  min="-24"
+                  max="12"
+                  step="0.5"
+                  value={selectedClip.volumeOffsetDb || 0}
+                  onChange={(e) => onUpdateClip(selectedClip.id, { volumeOffsetDb: parseFloat(e.target.value) })}
+                  style={{ width: '80px', height: '4px', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '11px', color: '#F3F4F6', fontFamily: 'monospace', width: '36px', textAlign: 'right' }}>
+                  {(selectedClip.volumeOffsetDb || 0) > 0 ? `+${(selectedClip.volumeOffsetDb || 0).toFixed(1)}` : (selectedClip.volumeOffsetDb || 0).toFixed(1)}
+                </span>
+              </div>
+            </div>
+
             {selectedClip.type === 'audio' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #252932', paddingTop: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -162,7 +187,62 @@ export const DawInspectorPanel: React.FC<DawInspectorPanelProps> = ({
                     {selectedClip.isReversed ? 'Reversed' : 'Forward'}
                   </button>
                 </div>
+
+                {onNormalizeClip && (
+                  <button
+                    onClick={() => onNormalizeClip(selectedClip.id)}
+                    style={{
+                      height: '26px',
+                      backgroundColor: '#252932',
+                      border: '1px solid #35C9A5',
+                      color: '#35C9A5',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Normalize Audio Peaks
+                  </button>
+                )}
               </div>
+            )}
+
+            {selectedClip.type === 'midi' && onQuantizeClipNotes && (
+              <button
+                onClick={() => onQuantizeClipNotes(selectedClip.id)}
+                style={{
+                  height: '26px',
+                  backgroundColor: '#252932',
+                  border: '1px solid #8B78FF',
+                  color: '#8B78FF',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Quantize MIDI Notes to Grid
+              </button>
+            )}
+
+            {onDuplicateClip && (
+              <button
+                onClick={() => onDuplicateClip(selectedClip.id)}
+                style={{
+                  height: '28px',
+                  backgroundColor: '#252932',
+                  border: '1px solid #323744',
+                  color: '#F3F4F6',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginTop: '4px',
+                }}
+              >
+                Duplicate Clip
+              </button>
             )}
 
             <button
@@ -288,3 +368,4 @@ export const DawInspectorPanel: React.FC<DawInspectorPanelProps> = ({
     </aside>
   );
 };
+

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DawTrack, DawClip, EditingTool } from '../../utils/daw/projectModel';
 
 interface DawArrangementViewProps {
@@ -25,6 +25,7 @@ interface DawArrangementViewProps {
   onToggleTrackArm: (trackId: string) => void;
   onChangeTrackVolume: (trackId: string, volDb: number) => void;
   onChangeTrackPan: (trackId: string, pan: number) => void;
+  onDoubleClickClip?: (clipId: string) => void;
   loopStartBar: number;
   loopEndBar: number;
   isLoopEnabled: boolean;
@@ -54,6 +55,7 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
   onToggleTrackArm,
   onChangeTrackVolume,
   onChangeTrackPan,
+  onDoubleClickClip,
   loopStartBar,
   loopEndBar,
   isLoopEnabled,
@@ -61,7 +63,47 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
   const BAR_WIDTH = 54;
   const HEADER_WIDTH = 230;
 
-  const dragClipRef = useRef<{ clipId: string; startX: number; origStartBar: number } | null>(null);
+  const [activeDrag, setActiveDrag] = useState<{
+    clipId: string;
+    type: 'move' | 'resize';
+    startX: number;
+    initialStartBar: number;
+    initialDurationBars: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!activeDrag) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const dx = e.clientX - activeDrag.startX;
+      const deltaBars = Math.round(dx / BAR_WIDTH);
+
+      if (activeDrag.type === 'move') {
+        const newStart = Math.max(
+          1,
+          Math.min(totalBars - activeDrag.initialDurationBars + 1, activeDrag.initialStartBar + deltaBars)
+        );
+        onMoveClip(activeDrag.clipId, newStart);
+      } else if (activeDrag.type === 'resize') {
+        const newDur = Math.max(
+          1,
+          Math.min(totalBars - activeDrag.initialStartBar + 1, activeDrag.initialDurationBars + deltaBars)
+        );
+        onResizeClip(activeDrag.clipId, newDur);
+      }
+    };
+
+    const handlePointerUp = () => {
+      setActiveDrag(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [activeDrag, totalBars, BAR_WIDTH, onMoveClip, onResizeClip]);
 
   const currentPlayheadBar = (currentStepIndex / 16) + 1;
 
@@ -431,17 +473,36 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
                     return (
                       <div
                         key={clip.id}
-                        onClick={(e) => {
+                        onPointerDown={(e) => {
                           e.stopPropagation();
+                          onSelectClip(clip.id);
+                          onSelectTrack(track.id);
+
                           if (activeTool === 'erase') {
                             onDeleteClip(clip.id);
-                          } else if (activeTool === 'split') {
-                            onSplitClip(clip.id, Math.floor(currentPlayheadBar));
-                          } else if (activeTool === 'mute') {
-                            onToggleClipMute(clip.id);
-                          } else {
-                            onSelectClip(clip.id);
+                            return;
                           }
+                          if (activeTool === 'split') {
+                            onSplitClip(clip.id, Math.floor(currentPlayheadBar));
+                            return;
+                          }
+                          if (activeTool === 'mute') {
+                            onToggleClipMute(clip.id);
+                            return;
+                          }
+
+                          // Start dragging clip across bars
+                          setActiveDrag({
+                            clipId: clip.id,
+                            type: 'move',
+                            startX: e.clientX,
+                            initialStartBar: clip.startBar,
+                            initialDurationBars: clip.durationBars,
+                          });
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          onDoubleClickClip?.(clip.id);
                         }}
                         style={{
                           position: 'absolute',
@@ -458,11 +519,11 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
                           flexDirection: 'column',
                           justifyContent: 'space-between',
                           padding: '4px 6px',
-                          cursor: 'grab',
+                          cursor: activeTool === 'erase' ? 'pointer' : activeTool === 'split' ? 'crosshair' : 'grab',
                           overflow: 'hidden',
                           zIndex: isClipSelected ? 5 : 1,
                         }}
-                        title={`${clip.name} (Starts at Bar ${clip.startBar}, Duration ${clip.durationBars} bars)`}
+                        title={`${clip.name} (Starts at Bar ${clip.startBar}, Duration ${clip.durationBars} bars) - Drag to move, drag right edge to resize, double-click to edit`}
                       >
                         {/* Clip Header Label */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -530,25 +591,31 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
                           </div>
                         )}
 
-                        {/* Resize handle right edge */}
+                        {/* Interactive Drag-to-Resize Right Edge Handle */}
                         <div
                           style={{
                             position: 'absolute',
                             right: 0,
                             top: 0,
                             bottom: 0,
-                            width: '8px',
+                            width: '10px',
                             cursor: 'ew-resize',
+                            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                            borderTopRightRadius: '4px',
+                            borderBottomRightRadius: '4px',
                           }}
-                          onClick={(e) => {
+                          onPointerDown={(e) => {
                             e.stopPropagation();
-                            const newDur = prompt('Enter new duration in bars:', String(clip.durationBars));
-                            if (newDur) {
-                              const parsed = parseInt(newDur, 10);
-                              if (!isNaN(parsed) && parsed >= 1) onResizeClip(clip.id, parsed);
-                            }
+                            onSelectClip(clip.id);
+                            setActiveDrag({
+                              clipId: clip.id,
+                              type: 'resize',
+                              startX: e.clientX,
+                              initialStartBar: clip.startBar,
+                              initialDurationBars: clip.durationBars,
+                            });
                           }}
-                          title="Click to change duration"
+                          title="Drag right edge to change duration in bars"
                         />
                       </div>
                     );
@@ -562,3 +629,4 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
     </div>
   );
 };
+

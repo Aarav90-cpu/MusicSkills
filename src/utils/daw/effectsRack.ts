@@ -360,3 +360,4 @@ export class ChannelEffectChain {
     return JSON.parse(JSON.stringify(this.currentConfig));
   }
 }
+

@@ -237,6 +237,22 @@ export class MixerEngine {
     if (node) node.setPan(pan);
   }
 
+  public syncChannel(trackId: string, isMuted: boolean, isSolo: boolean, volumeDb: number, pan: number): void {
+    const state = this.channelStates.get(trackId);
+    if (state) {
+      state.isMuted = isMuted;
+      state.isSolo = isSolo;
+      state.volumeDb = volumeDb;
+      state.pan = pan;
+    }
+    const node = this.channels.get(trackId);
+    if (node) {
+      node.setVolumeDb(volumeDb);
+      node.setPan(pan);
+    }
+    this.updateSoloMuteMatrix();
+  }
+
   public toggleChannelMute(trackId: string): void {
     const state = this.channelStates.get(trackId);
     if (state) {

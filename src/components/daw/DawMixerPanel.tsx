@@ -400,3 +400,4 @@ export const DawMixerPanel: React.FC<DawMixerPanelProps> = ({
     </div>
   );
 };
+

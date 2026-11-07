@@ -32,6 +32,7 @@ export interface DawClip {
   audioBuffer?: AudioBuffer;
   peaks?: number[];
   gainLinear?: number;
+  volumeOffsetDb?: number;
   pitchShiftSemitones?: number;
   isReversed?: boolean;
 
@@ -242,3 +243,4 @@ export function loadAutosaveSnapshot(): DawProject | null {
     return null;
   }
 }
+

@@ -553,3 +553,4 @@ export const DawStepSequencer: React.FC<DawStepSequencerProps> = ({
     </div>
   );
 };
+

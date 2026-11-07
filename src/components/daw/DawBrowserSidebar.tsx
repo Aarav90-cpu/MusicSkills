@@ -330,3 +330,4 @@ export const DawBrowserSidebar: React.FC<DawBrowserSidebarProps> = ({
     </aside>
   );
 };
+

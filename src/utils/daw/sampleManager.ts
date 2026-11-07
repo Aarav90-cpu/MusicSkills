@@ -168,6 +168,44 @@ class SampleManager {
     return peaks;
   }
 
+  public reverseBuffer(buffer: AudioBuffer): AudioBuffer {
+    const ctx = dawContextManager.getContext();
+    const reversed = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      const src = buffer.getChannelData(c);
+      const dest = reversed.getChannelData(c);
+      for (let i = 0; i < buffer.length; i++) {
+        dest[i] = src[buffer.length - 1 - i];
+      }
+    }
+    return reversed;
+  }
+
+  public normalizeBuffer(buffer: AudioBuffer): AudioBuffer {
+    let maxPeak = 0;
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      const src = buffer.getChannelData(c);
+      for (let i = 0; i < buffer.length; i++) {
+        const abs = Math.abs(src[i]);
+        if (abs > maxPeak) maxPeak = abs;
+      }
+    }
+
+    if (maxPeak < 0.001) return buffer;
+    const multiplier = 0.98 / maxPeak;
+    const ctx = dawContextManager.getContext();
+
+    const normalized = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      const src = buffer.getChannelData(c);
+      const dest = normalized.getChannelData(c);
+      for (let i = 0; i < buffer.length; i++) {
+        dest[i] = src[i] * multiplier;
+      }
+    }
+    return normalized;
+  }
+
   public async decodeAudioFile(file: File): Promise<{ buffer: AudioBuffer; peaks: number[] }> {
     const ctx = dawContextManager.getContext();
     const arrayBuffer = await file.arrayBuffer();
@@ -262,3 +300,4 @@ class SampleManager {
 }
 
 export const dawSampleManager = new SampleManager();
+

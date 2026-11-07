@@ -506,3 +506,4 @@ export const DawEffectsModal: React.FC<DawEffectsModalProps> = ({
     </div>
   );
 };
+

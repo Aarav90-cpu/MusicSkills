@@ -29,6 +29,8 @@ import { DawMixerPanel } from '../components/daw/DawMixerPanel';
 import { DawEffectsModal } from '../components/daw/DawEffectsModal';
 import { DawStatusBar } from '../components/daw/DawStatusBar';
 import { DawStepSequencer } from '../components/daw/DawStepSequencer';
+import { DawShortcutsModal } from '../components/daw/DawShortcutsModal';
+import { DawAudioSetupModal } from '../components/daw/DawAudioSetupModal';
 import { PianoRoll } from '../components/studio/PianoRoll';
 
 export const BeatStudioPage: React.FC = () => {
@@ -70,9 +72,11 @@ export const BeatStudioPage: React.FC = () => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(false);
 
-  // Effects Rack Modal State
+  // Effects Rack & Dialog Modals State
   const [activeEffectsTrackId, setActiveEffectsTrackId] = useState<string | null>(null);
   const [isMasterEffectsOpen, setIsMasterEffectsOpen] = useState<boolean>(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
+  const [isAudioSetupOpen, setIsAudioSetupOpen] = useState<boolean>(false);
 
   // Audio Engine & Mixer Instances
   const mixerEngineRef = useRef<MixerEngine | null>(null);
@@ -91,8 +95,7 @@ export const BeatStudioPage: React.FC = () => {
   useEffect(() => {
     project.tracks.forEach((track) => {
       mixer.registerChannel(track.id, track.name, track.color, track.effects);
-      mixer.setChannelVolume(track.id, track.volumeDb);
-      mixer.setChannelPan(track.id, track.pan);
+      mixer.syncChannel(track.id, track.isMuted, track.isSolo, track.volumeDb, track.pan);
     });
     mixer.setMasterVolume(project.masterVolumeDb);
   }, [project.tracks, project.masterVolumeDb, mixer]);
@@ -349,10 +352,15 @@ export const BeatStudioPage: React.FC = () => {
       playMetronomeClick(audioTime, isDownbeat);
     }
 
-    // 2. Schedule Clips & Notes
+    // 2. Solo / Mute Matrix Priority
+    const anySoloed = project.tracks.some((t) => t.isSolo);
+
+    // 3. Schedule Clips & Notes
     project.tracks.forEach((track) => {
       const channel = mixer.getChannel(track.id);
-      if (!channel || track.isMuted) return;
+      if (!channel) return;
+      if (anySoloed && !track.isSolo) return;
+      if (track.isMuted) return;
 
       const activeClips = project.clips.filter(
         (c) => c.trackId === track.id && currentBarNum >= c.startBar && currentBarNum < c.startBar + c.durationBars && !c.isMuted
@@ -379,13 +387,29 @@ export const BeatStudioPage: React.FC = () => {
     if (!clip.audioBuffer) return;
     const ctx = dawContextManager.getContext();
     const source = ctx.createBufferSource();
-    source.buffer = clip.audioBuffer;
+
+    let buf = clip.audioBuffer;
+    if (clip.isReversed) {
+      buf = dawSampleManager.reverseBuffer(buf);
+    }
+    source.buffer = buf;
 
     if (clip.pitchShiftSemitones) {
       source.detune.setValueAtTime(clip.pitchShiftSemitones * 100, time);
     }
 
-    source.connect(destinationNode);
+    // Connect through volume gain if offset defined
+    if (clip.volumeOffsetDb && clip.volumeOffsetDb !== 0) {
+      const clipGain = ctx.createGain();
+      const linear = Math.pow(10, clip.volumeOffsetDb / 20);
+      clipGain.gain.setValueAtTime(linear, time);
+      source.connect(clipGain);
+      clipGain.connect(destinationNode);
+      activeSourcesRef.current.push(clipGain);
+    } else {
+      source.connect(destinationNode);
+    }
+
     source.start(time);
     activeSourcesRef.current.push(source);
   };
@@ -599,6 +623,64 @@ export const BeatStudioPage: React.FC = () => {
     setIsDirty(true);
   };
 
+  const handleNormalizeClip = (clipId: string) => {
+    const clip = project.clips.find((c) => c.id === clipId);
+    if (!clip || !clip.audioBuffer) return;
+
+    const normalized = dawSampleManager.normalizeBuffer(clip.audioBuffer);
+    const newPeaks = dawSampleManager.extractPeaks(normalized, 120);
+
+    setProject((prev) => ({
+      ...prev,
+      clips: prev.clips.map((c) => (c.id === clipId ? { ...c, audioBuffer: normalized, peaks: newPeaks } : c)),
+    }));
+    setIsDirty(true);
+    showSnackbar(`Normalized peaks for "${clip.name}"!`);
+  };
+
+  const handleDuplicateClip = (clipId: string) => {
+    const clip = project.clips.find((c) => c.id === clipId);
+    if (!clip) return;
+
+    const newStartBar = clip.startBar + clip.durationBars;
+    const duplicated: DawClip = {
+      ...JSON.parse(JSON.stringify(clip)),
+      id: `clip_dup_${Date.now()}`,
+      name: `${clip.name} (Copy)`,
+      startBar: newStartBar,
+      audioBuffer: clip.audioBuffer,
+    };
+
+    setProject((prev) => ({
+      ...prev,
+      clips: [...prev.clips, duplicated],
+    }));
+    setSelectedClipId(duplicated.id);
+    setIsDirty(true);
+    showSnackbar(`Duplicated "${clip.name}" to Bar ${newStartBar}!`);
+  };
+
+  const handleQuantizeClip = (clipId?: string) => {
+    const targetClip = (clipId ? project.clips.find((c) => c.id === clipId) : null) || activeMidiClip;
+    if (!targetClip || targetClip.type !== 'midi' || !targetClip.notes) {
+      showSnackbar('No MIDI clip selected to quantize.');
+      return;
+    }
+
+    const quantizedNotes = targetClip.notes.map((n) => ({
+      ...n,
+      step: Math.round(n.step),
+      durationSteps: Math.max(1, Math.round(n.durationSteps)),
+    }));
+
+    setProject((prev) => ({
+      ...prev,
+      clips: prev.clips.map((c) => (c.id === targetClip.id ? { ...c, notes: quantizedNotes } : c)),
+    }));
+    setIsDirty(true);
+    showSnackbar(`Quantized ${quantizedNotes.length} notes in "${targetClip.name}" to grid!`);
+  };
+
   // Add sample from sidebar to existing or new track
   const handleAddSampleToTrack = (sample: SampleItem, trackId: string, bar: number) => {
     const track = project.tracks.find((t) => t.id === trackId);
@@ -786,8 +868,15 @@ export const BeatStudioPage: React.FC = () => {
         const clipStartTime = (clip.startBar - 1) * 16 * stepDuration;
 
         if (clip.type === 'audio' && clip.audioBuffer) {
+          let buf = clip.audioBuffer;
+          if (clip.isReversed) {
+            buf = dawSampleManager.reverseBuffer(buf);
+          }
           const source = offlineCtx.createBufferSource();
-          source.buffer = clip.audioBuffer;
+          source.buffer = buf;
+          if (clip.pitchShiftSemitones) {
+            source.detune.setValueAtTime(clip.pitchShiftSemitones * 100, clipStartTime);
+          }
           source.connect(channel.inputNode);
           source.start(clipStartTime);
         }
@@ -857,6 +946,113 @@ export const BeatStudioPage: React.FC = () => {
     showSnackbar(`Successfully exported "${project.name}_master.wav"!`);
   };
 
+  const handleExportStems = async () => {
+    const tracksWithClips = project.tracks.filter((t) => project.clips.some((c) => c.trackId === t.id));
+    if (tracksWithClips.length === 0) {
+      showSnackbar('No audio or MIDI clips found to export stems.');
+      return;
+    }
+
+    showSnackbar(`Rendering ${tracksWithClips.length} multitrack stems in WAV format...`);
+    const stepDuration = 60 / project.bpm / 4;
+    const totalSteps = project.totalBars * 16;
+    const totalDurationSec = totalSteps * stepDuration + 2.0;
+    const sampleRate = 44100;
+
+    for (let i = 0; i < tracksWithClips.length; i++) {
+      const track = tracksWithClips[i];
+      const offlineCtx = new OfflineAudioContext(2, Math.ceil(totalDurationSec * sampleRate), sampleRate);
+      const offlineMixer = new MixerEngine(offlineCtx);
+
+      offlineMixer.registerChannel(track.id, track.name, track.color, track.effects);
+      offlineMixer.setChannelVolume(track.id, track.volumeDb);
+      offlineMixer.setChannelPan(track.id, track.pan);
+      offlineMixer.setMasterVolume(project.masterVolumeDb);
+
+      const channel = offlineMixer.getChannel(track.id);
+      if (channel) {
+        const trackClips = project.clips.filter((c) => c.trackId === track.id && !c.isMuted);
+        trackClips.forEach((clip) => {
+          const clipStartTime = (clip.startBar - 1) * 16 * stepDuration;
+
+          if (clip.type === 'audio' && clip.audioBuffer) {
+            let buf = clip.audioBuffer;
+            if (clip.isReversed) {
+              buf = dawSampleManager.reverseBuffer(buf);
+            }
+            const source = offlineCtx.createBufferSource();
+            source.buffer = buf;
+            if (clip.pitchShiftSemitones) {
+              source.detune.setValueAtTime(clip.pitchShiftSemitones * 100, clipStartTime);
+            }
+            source.connect(channel.inputNode);
+            source.start(clipStartTime);
+          }
+
+          if (clip.type === 'midi' && clip.notes) {
+            clip.notes.forEach((note) => {
+              const noteTime = clipStartTime + note.step * stepDuration;
+              const dur = note.durationSteps * stepDuration;
+              dawSynthEngine.playNote(
+                note.pitch,
+                dur,
+                note.velocity,
+                track.instrumentPreset || 'piano',
+                channel.inputNode,
+                noteTime,
+                offlineCtx
+              );
+            });
+          }
+        });
+      }
+
+      const rendered = await offlineCtx.startRendering();
+
+      // Encode rendered AudioBuffer to WAV Blob
+      const length = rendered.length * 2 * 2;
+      const wavBuffer = new ArrayBuffer(44 + length);
+      const view = new DataView(wavBuffer);
+      const writeStr = (offset: number, s: string) => {
+        for (let j = 0; j < s.length; j++) view.setUint8(offset + j, s.charCodeAt(j));
+      };
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + length, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, 2, true); // Stereo
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 4, true);
+      view.setUint16(32, 4, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, length, true);
+
+      const l = rendered.getChannelData(0);
+      const r = rendered.getChannelData(1);
+      let offset = 44;
+      for (let s = 0; s < rendered.length; s++, offset += 4) {
+        const sL = Math.max(-1, Math.min(1, l[s]));
+        const sR = Math.max(-1, Math.min(1, r[s]));
+        view.setInt16(offset, sL < 0 ? sL * 0x8000 : sL * 0x7fff, true);
+        view.setInt16(offset + 2, sR < 0 ? sR * 0x8000 : sR * 0x7fff, true);
+      }
+
+      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project.name.replace(/\s+/g, '_')}_Stem_${track.name.replace(/\s+/g, '_')}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    showSnackbar(`Successfully exported ${tracksWithClips.length} multitrack stems!`);
+  };
+
   // Menu action handlers
   const menuHandlers: MenuActionHandlers = {
     onNewProject: () => {
@@ -891,10 +1087,7 @@ export const BeatStudioPage: React.FC = () => {
       }
     },
     onExportMaster: handleExportMaster,
-    onExportStems: () => {
-      showSnackbar('Exporting individual track stems to .zip...');
-      handleExportMaster();
-    },
+    onExportStems: handleExportStems,
     onUndo: handleUndo,
     onRedo: handleRedo,
     canUndo: historyRef.current.canUndo(),
@@ -918,36 +1111,9 @@ export const BeatStudioPage: React.FC = () => {
         handleSplitClip(selectedClipId, bar);
       }
     },
-    onQuantizeClip: () => {
-      showSnackbar('Quantized clip notes to 1/16th musical grid.');
-    },
-    onShowShortcuts: () => {
-      alert(
-        'MusicSkills DAW Keyboard Shortcuts:\n\n' +
-        'Space: Play / Pause\n' +
-        'R: Toggle Audio Recording into Armed Track\n' +
-        'L: Toggle Loop Mode\n' +
-        'S: Split Tool\n' +
-        'D: Draw Tool\n' +
-        'E: Erase Tool\n' +
-        'B: Toggle Sample Browser\n' +
-        'M: Toggle Mixer Panel\n' +
-        'I: Toggle Inspector Panel\n' +
-        'Ctrl+Z: Undo\n' +
-        'Ctrl+Shift+Z: Redo\n' +
-        'Ctrl+S: Save Session'
-      );
-    },
-    onShowAudioSetup: () => {
-      alert(
-        `Web Audio Engine Status:\n\n` +
-        `State: ${dawContextManager.getState().toUpperCase()}\n` +
-        `Sample Rate: ${dawContextManager.getSampleRate()} Hz\n` +
-        `Latency Mode: Interactive (~5.8ms buffer)\n` +
-        `Active Mixer Channels: ${project.tracks.length}\n` +
-        `Microphone Capture: Ready`
-      );
-    },
+    onQuantizeClip: () => handleQuantizeClip(),
+    onShowShortcuts: () => setIsShortcutsOpen(true),
+    onShowAudioSetup: () => setIsAudioSetupOpen(true),
   };
 
   const selectedTrack = project.tracks.find((t) => t.id === selectedTrackId) || null;
@@ -1111,6 +1277,16 @@ export const BeatStudioPage: React.FC = () => {
               loopStartBar={project.loopStartBar}
               loopEndBar={project.loopEndBar}
               isLoopEnabled={project.isLoopEnabled}
+              onDoubleClickClip={(id) => {
+                const c = project.clips.find((clip) => clip.id === id);
+                if (c?.type === 'midi') {
+                  setSelectedClipId(id);
+                  setActiveWorkspace('pianoroll');
+                } else {
+                  setSelectedClipId(id);
+                  setShowInspector(true);
+                }
+              }}
             />
           )}
 
@@ -1261,6 +1437,9 @@ export const BeatStudioPage: React.FC = () => {
             onDeleteClip={handleDeleteClip}
             onDeleteTrack={handleDeleteTrack}
             onOpenEffectsRack={(id) => setActiveEffectsTrackId(id)}
+            onDuplicateClip={handleDuplicateClip}
+            onNormalizeClip={handleNormalizeClip}
+            onQuantizeClipNotes={(id) => handleQuantizeClip(id)}
           />
         )}
       </div>
@@ -1306,6 +1485,20 @@ export const BeatStudioPage: React.FC = () => {
           }}
         />
       )}
+
+      {/* 8. Keyboard Shortcuts Modal */}
+      <DawShortcutsModal
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
+      />
+
+      {/* 9. Audio Setup & Hardware Modal */}
+      <DawAudioSetupModal
+        isOpen={isAudioSetupOpen}
+        onClose={() => setIsAudioSetupOpen(false)}
+        midiDevices={midiDevices}
+        activeChannelsCount={project.tracks.length}
+      />
     </div>
   );
 };
