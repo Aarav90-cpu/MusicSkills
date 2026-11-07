@@ -9,7 +9,7 @@ import { loadConfig, saveConfig, exportSettingsJson, importSettingsJson, maskKey
 
 const execFileAsync = promisify(execFile);
 import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap, backfillChatsMetadata, extractEmbeddedId3, sanitizeName, ChatSession } from './chats';
-import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey, fetchLRCLibReference } from './ai';
+import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey, fetchLRCLibReference, generatePythonMusicCode, editPythonMusicCode } from './ai';
 import { renderSong, mixVocalTake, renderMidiToAudio } from './audio';
 import { detectExternalAgents, startAgentSession, getAgentSession, cancelAgentSession } from './externalAgents';
 
@@ -403,6 +403,68 @@ app.post('/api/chats/:id/video', (req, res) => {
   });
 
   res.json({ success: true, path: videoFile });
+});
+
+app.post('/api/chats/:id/video/render', async (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  const { dirPath, chat } = result;
+  const files = fs.existsSync(dirPath) ? fs.readdirSync(dirPath) : [];
+  let mp3File = files.find(f => f.endsWith('.mp3'));
+  if (!mp3File) {
+    return res.status(400).json({ error: 'No audio MP3 found in project to render video from' });
+  }
+
+  const mp3Path = path.join(dirPath, mp3File);
+  const videoDir = path.join(dirPath, 'video');
+  if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+  const outMp4Path = path.join(videoDir, 'video_master.mp4');
+
+  let coverPath = path.join(dirPath, 'cover.jpg');
+  if (!fs.existsSync(coverPath)) {
+    const pngCover = path.join(dirPath, 'cover.png');
+    if (fs.existsSync(pngCover)) coverPath = pngCover;
+  }
+
+  try {
+    let cmd = '';
+    if (fs.existsSync(coverPath)) {
+      cmd = `ffmpeg -y -loop 1 -i "${coverPath}" -i "${mp3Path}" -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -shortest "${outMp4Path}"`;
+    } else {
+      cmd = `ffmpeg -y -i "${mp3Path}" -filter_complex "[0:a]showwaves=s=1920x1080:mode=line:colors=0x6E44FF[v]" -map "[v]" -map 0:a -c:v libx264 -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "${outMp4Path}"`;
+    }
+
+    await execFileAsync('sh', ['-c', cmd], { timeout: 120000 });
+    if (fs.existsSync(outMp4Path)) {
+      broadcastEvent({
+        type: 'chats_updated',
+        message: `Rendered 1080p video master for "${chat.name}"`,
+        payload: { id: chat.id, file: 'video/video_master.mp4' },
+      });
+
+      return res.json({
+        success: true,
+        videoFile: 'video_master.mp4',
+        downloadUrl: `/api/chats/${chat.id}/video/download`,
+      });
+    } else {
+      throw new Error('Video render process finished without output file');
+    }
+  } catch (err: any) {
+    console.error('Video render failed:', err);
+    res.status(500).json({ error: err.message || 'Video render failed' });
+  }
+});
+
+app.get('/api/chats/:id/video/download', (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+  const videoPath = path.join(result.dirPath, 'video', 'video_master.mp4');
+  if (!fs.existsSync(videoPath)) {
+    return res.status(404).json({ error: 'Rendered video master not found. Please render the video first.' });
+  }
+  res.download(videoPath, `${sanitizeName(result.chat.name)}_visualizer.mp4`);
 });
 
 // --- AI SONGWRITING & LYRICS ROUTES ---
@@ -1008,6 +1070,178 @@ app.post('/api/code/run', async (req, res) => {
       stderr: err.stderr || err.message,
       exitCode: err.code || 1,
     });
+  }
+});
+
+// --- AI PYTHON CODE GENERATION & COMPOSITION EXECUTION ROUTES ---
+
+app.post('/api/ai/code/generate', async (req, res) => {
+  const { chatId, topic, genre, mood, bpm, key, sections, instructions } = req.body;
+  let chatDir = '';
+  let chatName = topic || 'New Song';
+  let chatStyle: any = {};
+
+  if (chatId) {
+    const chatResult = getChat(chatId);
+    if (chatResult) {
+      chatDir = chatResult.dirPath;
+      chatName = chatResult.chat.name;
+      chatStyle = chatResult.chat.style || {};
+    }
+  }
+
+  try {
+    const genResult = await generatePythonMusicCode({
+      topic: topic || chatName,
+      genre: genre || chatStyle.genre || 'pop',
+      mood: mood || (chatStyle.moods && chatStyle.moods[0]) || 'energetic',
+      bpm: bpm || chatStyle.bpm || 120,
+      key: key || chatStyle.key || 'C',
+      sections,
+      instructions,
+      baseName: 'composition',
+    });
+
+    if (chatDir && fs.existsSync(chatDir)) {
+      const targetFile = path.join(chatDir, 'composition.py');
+      fs.writeFileSync(targetFile, genResult.code, 'utf-8');
+    }
+
+    res.json({
+      success: true,
+      ...genResult,
+    });
+  } catch (err: any) {
+    console.error('AI code generation failed:', err);
+    res.status(500).json({ error: err.message || 'AI code generation failed' });
+  }
+});
+
+app.post('/api/ai/code/edit', async (req, res) => {
+  const { chatId, code, instruction } = req.body;
+  if (!code || !instruction) {
+    return res.status(400).json({ error: 'Both code and instruction are required' });
+  }
+
+  try {
+    const editResult = await editPythonMusicCode(code, instruction);
+    if (chatId) {
+      const chatResult = getChat(chatId);
+      if (chatResult && fs.existsSync(chatResult.dirPath)) {
+        const targetFile = path.join(chatResult.dirPath, 'composition.py');
+        fs.writeFileSync(targetFile, editResult.code, 'utf-8');
+      }
+    }
+
+    res.json({
+      success: true,
+      ...editResult,
+    });
+  } catch (err: any) {
+    console.error('AI code editing failed:', err);
+    res.status(500).json({ error: err.message || 'AI code editing failed' });
+  }
+});
+
+app.post('/api/ai/code/render', async (req, res) => {
+  const { chatId, code } = req.body;
+  if (!chatId) return res.status(400).json({ error: 'chatId is required' });
+
+  const result = getChat(chatId);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  const { chat, dirPath } = result;
+  const pythonBin = fs.existsSync(path.resolve(process.cwd(), '.venv/bin/python'))
+    ? path.resolve(process.cwd(), '.venv/bin/python')
+    : 'python3';
+
+  const compPath = path.join(dirPath, 'composition.py');
+  if (code) {
+    fs.writeFileSync(compPath, code, 'utf-8');
+  } else if (!fs.existsSync(compPath)) {
+    const generated = await generatePythonMusicCode({
+      topic: chat.style.topic || chat.name,
+      genre: chat.style.genre || 'pop',
+      mood: (chat.style.moods && chat.style.moods[0]) || 'energetic',
+      bpm: chat.style.bpm || 120,
+      key: chat.style.key || 'C',
+      baseName: `${chat.folderName}_custom`,
+    });
+    fs.writeFileSync(compPath, generated.code, 'utf-8');
+  }
+
+  const versionNum = chat.versions.length + 1;
+  const versionLabel = `v${versionNum}`;
+  const baseName = `${chat.folderName}_${versionLabel}`;
+  const midiPath = path.join(dirPath, `${baseName}.mid`);
+  const mp3Path = path.join(dirPath, `${baseName}.mp3`);
+
+  try {
+    const { stdout, stderr } = await execFileAsync(pythonBin, [compPath, midiPath], {
+      cwd: dirPath,
+      timeout: 45000,
+    });
+
+    if (!fs.existsSync(midiPath)) {
+      const files = fs.readdirSync(dirPath);
+      const generatedMid = files.find(f => f.endsWith('.mid'));
+      if (generatedMid) {
+        fs.renameSync(path.join(dirPath, generatedMid), midiPath);
+      } else {
+        throw new Error(`Python script did not produce MIDI output at ${midiPath}. Output: ${stderr || stdout}`);
+      }
+    }
+
+    await renderMidiToAudio(midiPath, mp3Path);
+
+    let durationSec = 180;
+    try {
+      const durCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${mp3Path}"`;
+      const durOut = await execFileAsync('sh', ['-c', durCmd]);
+      const parsedDur = parseFloat(durOut.stdout.trim());
+      if (!isNaN(parsedDur) && parsedDur > 0) durationSec = Math.round(parsedDur);
+    } catch (_) {}
+
+    const peaks: number[] = [];
+    for (let i = 0; i < 100; i++) {
+      const norm = i / 100;
+      const wave = Math.sin(norm * Math.PI * 4) * 0.35 + Math.sin(norm * Math.PI * 12) * 0.2 + 0.45;
+      const jitter = (Math.random() - 0.5) * 0.12;
+      peaks.push(Math.max(0.1, Math.min(1.0, wave + jitter)));
+    }
+
+    const newVersion = {
+      version: versionLabel,
+      createdAt: new Date().toISOString(),
+      bpm: chat.style.bpm || 120,
+      key: chat.style.key || 'C',
+      midiFile: `${baseName}.mid`,
+      mp3File: fs.existsSync(mp3Path) ? `${baseName}.mp3` : '',
+      leadSheetFile: `${baseName}_lead_sheet.md`,
+      durationSec,
+      notes: `Rendered from custom AI Python script (${versionLabel})`,
+    };
+
+    chat.versions.push(newVersion);
+    chat.step = 'result';
+    saveChat(chat);
+
+    broadcastEvent({
+      type: 'chats_updated',
+      message: `Rendered custom Python music master (${versionLabel}) for "${chat.name}"`,
+      payload: { id: chat.id, version: newVersion },
+    });
+
+    res.json({
+      success: true,
+      version: newVersion,
+      peaks,
+      chat,
+      stdout,
+    });
+  } catch (err: any) {
+    console.error('Python script execution and render failed:', err);
+    res.status(500).json({ error: err.message || 'Python script execution failed' });
   }
 });
 

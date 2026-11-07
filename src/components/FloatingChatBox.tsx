@@ -8,6 +8,7 @@ interface CodeChangeProposal {
   linesRemoved: number;
   summary: string;
   diffCode: string;
+  code?: string;
   accepted?: boolean;
   denied?: boolean;
 }
@@ -194,27 +195,59 @@ export const FloatingChatBox: React.FC = () => {
         // Check if message asks for arrangement or code modification
         const isArrangementRequest =
           text.toLowerCase().includes('drop') ||
+          text.toLowerCase().includes('climb') ||
           text.toLowerCase().includes('change') ||
           text.toLowerCase().includes('snare') ||
           text.toLowerCase().includes('bass') ||
+          text.toLowerCase().includes('cover') ||
+          text.toLowerCase().includes('script') ||
+          text.toLowerCase().includes('python') ||
           text.toLowerCase().includes('code');
 
         let proposal: CodeChangeProposal | undefined = undefined;
         if (isArrangementRequest) {
-          proposal = {
-            id: `prop-${Date.now()}`,
-            filePath: 'scripts/song_generator.py',
-            linesAdded: 24,
-            linesRemoved: 6,
-            summary: 'Added accelerating snare roll buildup and pre-drop silence gap before Chorus',
-            diffCode: `+ # Accelerated Climb & Pre-Drop Silence
+          try {
+            const codeRes = await fetch('/api/ai/code/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chatId: activeChatId,
+                topic: activeChat?.name || 'Composition',
+                genre: activeChat?.style?.genre || 'pop',
+                bpm: activeChat?.style?.bpm || 120,
+                key: activeChat?.style?.key || 'C',
+                instructions: text,
+              }),
+            });
+
+            if (codeRes.ok) {
+              const codeData = await codeRes.json();
+              proposal = {
+                id: `prop-${Date.now()}`,
+                filePath: 'composition.py',
+                linesAdded: codeData.linesAdded || 180,
+                linesRemoved: codeData.linesRemoved || 0,
+                summary: codeData.summary || `Generated custom composition code: "${text}"`,
+                diffCode: `+ # ${codeData.summary}\n+ Tension curve: Intro -> Verse -> 16th Snare Climb -> Pre-Drop Silence -> Sub-Bass Impact -> Outro\n+ def compose(output_mid_path="composition.mid"): ...`,
+                code: codeData.code,
+              };
+            }
+          } catch (_) {
+            proposal = {
+              id: `prop-${Date.now()}`,
+              filePath: 'composition.py',
+              linesAdded: 24,
+              linesRemoved: 6,
+              summary: 'Added accelerating snare roll buildup and pre-drop silence gap before Chorus',
+              diffCode: `+ # Accelerated Climb & Pre-Drop Silence
 + if is_pre_chorus and bar == sec.num_bars - 1 and step >= 8:
 +     # Silence kick and bass on beats 3-4 for maximum drop contrast
 +     events_to_trigger = []
 + elif is_pre_chorus and bar >= 2:
 +     roll_vel = 72 + int((bar - 2) * 18 + (step / 16.0) * 24)
 +     events_to_trigger.append((snare, min(122, roll_vel)))`,
-          };
+            };
+          }
         }
 
         const assistMsg: ChatMessage = {
@@ -248,6 +281,48 @@ export const FloatingChatBox: React.FC = () => {
     proposal.accepted = false;
     setMessages([...messages]);
     showSnackbar(`Denied changes to ${proposal.filePath}`);
+  };
+
+  const handleRenderProposal = async (proposal: CodeChangeProposal) => {
+    if (!activeChatId) {
+      showSnackbar('Please select an active song project to render');
+      return;
+    }
+    showSnackbar('Synthesizing Python composition to master audio...');
+    try {
+      const res = await fetch('/api/ai/code/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChatId,
+          code: proposal.code,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        await refreshChats();
+        showSnackbar(`Rendered ${data.version.version} successfully! Starting playback...`);
+        const mp3Url = `/api/audio/${activeChatId}/${data.version.mp3File}`;
+        playTrack({
+          chatId: activeChatId,
+          songName: activeChat?.name || 'Custom Track',
+          artist: 'AI Studio Producer',
+          album: 'Studio Master Compositions',
+          version: data.version.version,
+          mp3Url,
+          midiUrl: `/api/audio/${activeChatId}/${data.version.midiFile}`,
+          durationSec: data.version.durationSec,
+          lyrics: activeChat?.lyrics || {},
+          bpm: activeChat?.style?.bpm || 120,
+        });
+      } else {
+        const err = await res.json();
+        showSnackbar(`Render failed: ${err.error}`);
+      }
+    } catch (e: any) {
+      showSnackbar(`Render error: ${e.message}`);
+    }
   };
 
   if (!isOpen) {
@@ -566,9 +641,19 @@ export const FloatingChatBox: React.FC = () => {
                       </button>
                     </>
                   ) : msg.proposal.accepted ? (
-                    <span style={{ fontSize: '12px', color: '#28c864', fontWeight: 600 }}>
-                      Changes Applied
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#28c864', fontWeight: 600 }}>
+                        Changes Applied
+                      </span>
+                      <button
+                        onClick={() => handleRenderProposal(msg.proposal!)}
+                        className="btn btn-primary"
+                        style={{ height: '28px', padding: '0 12px', fontSize: '11px', fontWeight: 600 }}
+                      >
+                        <span className="material-icons-round" style={{ fontSize: '14px' }}>play_arrow</span>
+                        <span>Render & Play Master</span>
+                      </button>
+                    </div>
                   ) : (
                     <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
                       Changes Denied

@@ -20,6 +20,12 @@ export const CodeEditorPage: React.FC = () => {
   const [consoleOutput, setConsoleOutput] = useState<string>('');
   const [consoleStatus, setConsoleStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
 
+  // AI Assistant State
+  const [aiInstruction, setAiInstruction] = useState<string>('');
+  const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
+  const [isRenderingMaster, setIsRenderingMaster] = useState<boolean>(false);
+  const [diffStats, setDiffStats] = useState<{ added: number; removed: number; summary: string } | null>(null);
+
   // Load available python files
   const loadFileList = async () => {
     try {
@@ -129,6 +135,160 @@ export const CodeEditorPage: React.FC = () => {
     }
   };
 
+  // AI Script Modification
+  const handleAiEdit = async () => {
+    if (!aiInstruction.trim() || !codeContent) return;
+    setIsAiProcessing(true);
+    setConsoleStatus('running');
+    setConsoleOutput(`Invoking AI Music Producer to modify ${selectedPath}...\nInstruction: "${aiInstruction}"\n`);
+
+    try {
+      const res = await fetch('/api/ai/code/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChatId,
+          code: codeContent,
+          instruction: aiInstruction.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCodeContent(data.code);
+        setDiffStats({
+          added: data.linesAdded || 0,
+          removed: data.linesRemoved || 0,
+          summary: data.summary || 'Updated Python code according to prompt',
+        });
+        setConsoleStatus('success');
+        setConsoleOutput(
+          prev => `${prev}\n--- AI EDITED SCRIPT SUCCESSFULLY ---\n${data.summary}\n+${data.linesAdded} lines / -${data.linesRemoved} lines\n`
+        );
+        showSnackbar(`AI updated script: +${data.linesAdded} / -${data.linesRemoved} lines`);
+        setAiInstruction('');
+      } else {
+        const err = await res.json();
+        setConsoleStatus('error');
+        setConsoleOutput(prev => `${prev}\nAI edit failed: ${err.error}\n`);
+        showSnackbar(`AI edit failed: ${err.error}`);
+      }
+    } catch (err: any) {
+      setConsoleStatus('error');
+      setConsoleOutput(prev => `${prev}\nNetwork error: ${err.message}\n`);
+      showSnackbar(`Network error: ${err.message}`);
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  // Generate fresh script for active chat
+  const handleAiGenerate = async () => {
+    setIsAiProcessing(true);
+    setConsoleStatus('running');
+    setConsoleOutput(`Generating AI Python composition script for "${activeChat?.name || 'Project'}"...\n`);
+
+    try {
+      const res = await fetch('/api/ai/code/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChatId,
+          topic: activeChat?.name || 'New Song',
+          genre: activeChat?.style.genre || 'pop',
+          bpm: activeChat?.style.bpm || 120,
+          key: activeChat?.style.key || 'C',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCodeContent(data.code);
+        setDiffStats({
+          added: data.linesAdded || data.lineCount || 0,
+          removed: 0,
+          summary: data.summary || 'Generated multi-track composition script',
+        });
+        setConsoleStatus('success');
+        setConsoleOutput(
+          prev => `${prev}\n--- AI GENERATED NEW SCRIPT ---\n${data.summary}\n${data.lineCount} total lines of code\n`
+        );
+        showSnackbar(`AI wrote ${data.lineCount} lines of Python code`);
+        loadFileList();
+      } else {
+        const err = await res.json();
+        setConsoleStatus('error');
+        setConsoleOutput(prev => `${prev}\nGeneration failed: ${err.error}\n`);
+        showSnackbar(`Generation failed: ${err.error}`);
+      }
+    } catch (err: any) {
+      setConsoleStatus('error');
+      setConsoleOutput(prev => `${prev}\nNetwork error: ${err.message}\n`);
+      showSnackbar(`Network error: ${err.message}`);
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  // Render & Play Master
+  const handleRenderAndPlay = async () => {
+    if (!activeChatId) {
+      showSnackbar('Please select or create an active project to render');
+      return;
+    }
+
+    setIsRenderingMaster(true);
+    setConsoleStatus('running');
+    setConsoleOutput(`Compiling Python composition to MIDI and synthesizing 192k MP3 via FluidSynth...\n`);
+
+    try {
+      const res = await fetch('/api/ai/code/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChatId,
+          code: codeContent,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setConsoleStatus('success');
+        setConsoleOutput(
+          prev => `${prev}\n--- RENDER SUCCESSFUL ---\nVersion: ${data.version.version}\nMIDI: ${data.version.midiFile}\nMP3: ${data.version.mp3File}\nDuration: ${data.version.durationSec}s\n${data.stdout || ''}\n`
+        );
+        showSnackbar(`Rendered ${data.version.version} successfully! Starting playback...`);
+        await refreshChats();
+
+        // Autoplay rendered track
+        const mp3Url = `/api/audio/${activeChatId}/${data.version.mp3File}`;
+        playTrack({
+          chatId: activeChatId,
+          songName: activeChat?.name || 'Custom Master',
+          artist: 'AI Studio Producer',
+          album: 'Studio Master Compositions',
+          version: data.version.version,
+          mp3Url,
+          midiUrl: `/api/audio/${activeChatId}/${data.version.midiFile}`,
+          durationSec: data.version.durationSec,
+          lyrics: activeChat?.lyrics || {},
+          bpm: activeChat?.style.bpm || 120,
+        });
+      } else {
+        const err = await res.json();
+        setConsoleStatus('error');
+        setConsoleOutput(prev => `${prev}\n--- RENDER FAILED ---\n${err.error}\n`);
+        showSnackbar(`Render failed: ${err.error}`);
+      }
+    } catch (err: any) {
+      setConsoleStatus('error');
+      setConsoleOutput(prev => `${prev}\nRender error: ${err.message}\n`);
+      showSnackbar(`Render error: ${err.message}`);
+    } finally {
+      setIsRenderingMaster(false);
+    }
+  };
+
   const isDirty = codeContent !== originalContent;
   const lineCount = codeContent.split('\n').length;
 
@@ -152,6 +312,8 @@ export const CodeEditorPage: React.FC = () => {
           backgroundColor: '#121118',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           zIndex: 10,
+          flexWrap: 'wrap',
+          gap: '10px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -202,10 +364,21 @@ export const CodeEditorPage: React.FC = () => {
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontFamily: 'monospace' }}>
             {lineCount} lines · Python 3.14 (.venv)
           </span>
+
+          <button
+            onClick={handleAiGenerate}
+            disabled={isAiProcessing}
+            className="btn btn-outlined"
+            style={{ height: '34px', padding: '0 12px', fontSize: '12px' }}
+            title="Generate custom multi-track composition script with AI"
+          >
+            <span className="material-icons-round" style={{ fontSize: '16px' }}>smart_toy</span>
+            <span>{isAiProcessing ? 'Composing...' : 'AI Generate'}</span>
+          </button>
 
           <button
             onClick={handleSave}
@@ -213,7 +386,7 @@ export const CodeEditorPage: React.FC = () => {
             className="btn btn-outlined"
             style={{
               height: '34px',
-              padding: '0 14px',
+              padding: '0 12px',
               fontSize: '12px',
               borderColor: isDirty ? 'var(--color-primary)' : 'rgba(255, 255, 255, 0.15)',
             }}
@@ -225,13 +398,94 @@ export const CodeEditorPage: React.FC = () => {
           <button
             onClick={handleRun}
             disabled={isRunning}
-            className="btn btn-primary"
-            style={{ height: '34px', padding: '0 16px', fontSize: '12px', fontWeight: 600 }}
+            className="btn btn-outlined"
+            style={{ height: '34px', padding: '0 12px', fontSize: '12px', fontWeight: 600 }}
           >
             <span className="material-icons-round" style={{ fontSize: '16px' }}>play_arrow</span>
-            <span>{isRunning ? 'Running...' : 'Run with Python'}</span>
+            <span>{isRunning ? 'Running...' : 'Run CLI'}</span>
+          </button>
+
+          <button
+            onClick={handleRenderAndPlay}
+            disabled={isRenderingMaster}
+            className="btn btn-primary"
+            style={{ height: '34px', padding: '0 16px', fontSize: '12px', fontWeight: 700 }}
+          >
+            <span className="material-icons-round" style={{ fontSize: '16px' }}>graphic_eq</span>
+            <span>{isRenderingMaster ? 'Synthesizing...' : 'Render & Play Master'}</span>
           </button>
         </div>
+      </div>
+
+      {/* AI Assistant Tweak Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '8px 20px',
+          backgroundColor: '#0E0D14',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+        }}
+      >
+        <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '18px' }}>
+          auto_fix_high
+        </span>
+        <input
+          type="text"
+          value={aiInstruction}
+          onChange={e => setAiInstruction(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAiEdit()}
+          placeholder='Ask AI to adjust Python composition: e.g. "Add a heavier beat drop on bar 16", "Double-time snare in climb", "Change BPM to 128"...'
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '6px',
+            padding: '6px 12px',
+            fontSize: '12px',
+            color: 'var(--color-text)',
+            outline: 'none',
+          }}
+        />
+        <button
+          onClick={handleAiEdit}
+          disabled={isAiProcessing || !aiInstruction.trim()}
+          className="btn btn-primary"
+          style={{ height: '30px', padding: '0 14px', fontSize: '12px' }}
+        >
+          <span>{isAiProcessing ? 'Modifying...' : 'Tweak Script'}</span>
+        </button>
+
+        {diffStats && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+            <span className="chip chip-active" style={{ height: '22px', fontSize: '11px' }}>
+              +{diffStats.added} / -{diffStats.removed} lines
+            </span>
+            <button
+              onClick={() => {
+                setOriginalContent(codeContent);
+                setDiffStats(null);
+                showSnackbar('Accepted code changes');
+              }}
+              className="btn btn-outlined"
+              style={{ height: '26px', padding: '0 8px', fontSize: '11px' }}
+            >
+              Accept
+            </button>
+            <button
+              onClick={() => {
+                setCodeContent(originalContent);
+                setDiffStats(null);
+                showSnackbar('Reverted code changes');
+              }}
+              className="btn btn-outlined"
+              style={{ height: '26px', padding: '0 8px', fontSize: '11px' }}
+            >
+              Revert
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Split: Code Editor (top/left) + Terminal (bottom) */}

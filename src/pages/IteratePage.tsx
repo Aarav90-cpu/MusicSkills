@@ -23,6 +23,12 @@ export const IteratePage: React.FC = () => {
   // A/B Comparison States
   const [versionA, setVersionA] = useState<SongVersion | null>(null);
   const [versionB, setVersionB] = useState<SongVersion | null>(null);
+
+  // Cover Feature State
+  const [showCoverModal, setShowCoverModal] = useState<boolean>(false);
+  const [coverBaseVersion, setCoverBaseVersion] = useState<string>('');
+  const [coverInstruction, setCoverInstruction] = useState<string>('');
+  const [coverStyle, setCoverStyle] = useState<string>('acoustic');
   const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
 
   // Quick suggestion chips
@@ -165,12 +171,86 @@ export const IteratePage: React.FC = () => {
     }
   };
 
+  const handleCreateCover = async () => {
+    if (!activeChat || isRegenerating) return;
+    setIsRegenerating(true);
+    setShowCoverModal(false);
+
+    const baseVer = coverBaseVersion || (versions[versions.length - 1]?.version || 'v1');
+    const nextVer = `v${versions.length + 1}`;
+    const coverNote = `Cover of ${baseVer}: ${coverInstruction || 'Stylistic re-arrangement'}`;
+
+    addActivityEvent({
+      stage: `Creating ${nextVer} (${coverNote})`,
+      status: 'running',
+    });
+
+    try {
+      const codeRes = await fetch('/api/ai/code/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChat.id,
+          topic: `${activeChat.name} (Cover)`,
+          genre: coverStyle || activeChat.style.genre || 'pop',
+          bpm: activeChat.style.bpm || 120,
+          key: activeChat.style.key || 'C',
+          instructions: `Create a distinct cover arrangement based on version ${baseVer}. Specific changes: ${coverInstruction}`,
+        }),
+      });
+
+      const codeData = await codeRes.json();
+
+      const renderRes = await fetch('/api/ai/code/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChat.id,
+          code: codeData.code,
+        }),
+      });
+
+      if (renderRes.ok) {
+        const data = await renderRes.json();
+        setActiveChat(data.chat);
+        await refreshChats();
+        showSnackbar(`Created Cover Version ${nextVer} successfully!`);
+        addActivityEvent({
+          stage: `Cover Version ${nextVer} Ready`,
+          status: 'done',
+        });
+
+        const newV = data.version;
+        const mp3File = newV.mp3File || `${activeChat.folderName}_${newV.version}.mp3`;
+        playTrack({
+          chatId: activeChat.id,
+          songName: `${activeChat.name} (Cover)`,
+          artist: 'AI Studio Producer',
+          album: 'Studio Master Compositions',
+          version: newV.version,
+          mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
+          midiUrl: newV.midiFile ? `/api/audio/${activeChat.id}/${newV.midiFile}` : '',
+          durationSec: newV.durationSec || 180,
+          lyrics: activeChat.lyrics,
+          bpm: newV.bpm,
+        });
+      } else {
+        const err = await renderRes.json();
+        showSnackbar(`Cover creation failed: ${err.error}`);
+      }
+    } catch (e: any) {
+      showSnackbar(`Cover error: ${e.message}`);
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
   const versions = activeChat.versions || [];
 
   return (
     <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 24px 100px 24px' }}>
       {/* HEADER SECTION */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '24px' }}>
@@ -185,31 +265,181 @@ export const IteratePage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleGenerateNewVersion}
-          disabled={isRegenerating}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button
+            onClick={() => setShowCoverModal(true)}
+            disabled={isRegenerating || versions.length === 0}
+            className="btn btn-outlined"
+            style={{
+              height: '42px',
+              padding: '0 16px',
+              fontSize: '13px',
+              fontWeight: 600,
+            }}
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>swap_horiz</span>
+            <span>Create Cover Version</span>
+          </button>
+
+          <button
+            onClick={handleGenerateNewVersion}
+            disabled={isRegenerating}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 22px',
+              backgroundColor: 'var(--color-primary)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 'var(--radius-pill)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: isRegenerating ? 'not-allowed' : 'pointer',
+              opacity: isRegenerating ? 0.7 : 1,
+              boxShadow: '0 4px 16px rgba(183, 166, 255, 0.25)',
+            }}
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>
+              auto_awesome
+            </span>
+            {isRegenerating ? 'Rendering Arrangement...' : `Compile Version v${versions.length + 1}`}
+          </button>
+        </div>
+      </div>
+
+      {/* COVER VERSION MODAL */}
+      {showCoverModal && (
+        <div
           style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 1400,
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '10px 22px',
-            backgroundColor: 'var(--color-primary)',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: 'var(--radius-pill)',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: isRegenerating ? 'not-allowed' : 'pointer',
-            opacity: isRegenerating ? 0.7 : 1,
-            boxShadow: '0 4px 16px rgba(183, 166, 255, 0.25)',
+            justifyContent: 'center',
+            padding: '20px',
           }}
         >
-          <span className="material-icons-round" style={{ fontSize: '18px' }}>
-            auto_awesome
-          </span>
-          {isRegenerating ? 'Rendering Arrangement...' : `Compile Version v${versions.length + 1}`}
-        </button>
-      </div>
+          <div
+            className="card animate-pop-in"
+            style={{
+              width: '100%',
+              maxWidth: '520px',
+              backgroundColor: '#121118',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '12px',
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '22px' }}>
+                  swap_horiz
+                </span>
+                <span style={{ fontWeight: 700, fontSize: '16px' }}>Create Cover / Variation Version</span>
+              </div>
+              <button onClick={() => setShowCoverModal(false)} className="btn-text" style={{ padding: '4px' }}>
+                <span className="material-icons-round">close</span>
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
+              Select an existing version of this song as a baseline, specify your changes, and the AI will compose a new cover version.
+            </p>
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                Baseline Version:
+              </label>
+              <select
+                value={coverBaseVersion || (versions[versions.length - 1]?.version || 'v1')}
+                onChange={e => setCoverBaseVersion(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '6px',
+                  color: '#FFF',
+                  fontSize: '13px',
+                }}
+              >
+                {versions.map(v => (
+                  <option key={v.version} value={v.version}>
+                    {v.version} ({v.bpm} BPM · Key {v.key})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                Cover Style Direction:
+              </label>
+              <select
+                value={coverStyle}
+                onChange={e => setCoverStyle(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '6px',
+                  color: '#FFF',
+                  fontSize: '13px',
+                }}
+              >
+                <option value="acoustic">Acoustic Piano & Warm Strings</option>
+                <option value="electronic">High-Energy Electronic / EDM</option>
+                <option value="phonk">Drift Phonk / Hard Bass</option>
+                <option value="rock">Electric Rock / Overdrive</option>
+                <option value="hip-hop">Lo-Fi Boom Bap / Hip-Hop</option>
+                <option value="indian">Indian Classical Fusion</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                Specific Part to Change:
+              </label>
+              <textarea
+                value={coverInstruction}
+                onChange={e => setCoverInstruction(e.target.value)}
+                placeholder='e.g. "Add a heavier sub-bass drop on the chorus", "Make the climb faster with 16th snare roll", "Add acoustic arpeggio in Verse 1"...'
+                style={{
+                  width: '100%',
+                  height: '80px',
+                  padding: '10px 12px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '6px',
+                  color: '#FFF',
+                  fontSize: '13px',
+                  resize: 'none',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+              <button onClick={() => setShowCoverModal(false)} className="btn btn-outlined" style={{ height: '36px', fontSize: '13px' }}>
+                Cancel
+              </button>
+              <button onClick={handleCreateCover} className="btn btn-primary" style={{ height: '36px', fontSize: '13px', fontWeight: 600 }}>
+                Generate Cover Master
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2-COLUMN SPLIT: CHAT ON LEFT, VERSION RAIL & A/B ON RIGHT */}
       <div style={{ display: 'grid', gridTemplateColumns: '460px 1fr', gap: '24px' }}>

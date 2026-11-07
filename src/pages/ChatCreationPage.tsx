@@ -43,6 +43,17 @@ export const ChatCreationPage: React.FC = () => {
   const [activeSectionScroll, setActiveSectionScroll] = useState<string | null>(null);
   const [recentEditedSection, setRecentEditedSection] = useState<string | null>(null);
 
+  // --- STEP 3: PYTHON CODE & ARRANGEMENT STATE ---
+  const [reviewSubTab, setReviewSubTab] = useState<'blueprint' | 'code'>('blueprint');
+  const [customPythonCode, setCustomPythonCode] = useState<string>('');
+  const [isGeneratingCode, setIsGeneratingCode] = useState<boolean>(false);
+  const [isEditingCode, setIsEditingCode] = useState<boolean>(false);
+  const [codeTweakInput, setCodeTweakInput] = useState<string>('');
+  const [codeLinesAdded, setCodeLinesAdded] = useState<number>(0);
+  const [codeLinesRemoved, setCodeLinesRemoved] = useState<number>(0);
+  const [codeDiffSummary, setCodeDiffSummary] = useState<string>('');
+  const [codeAccepted, setCodeAccepted] = useState<boolean>(false);
+
   // --- STEP 4: GENERATION PROGRESS STATE ---
   const [genStage, setGenStage] = useState(0);
   const stages = [
@@ -290,6 +301,78 @@ export const ChatCreationPage: React.FC = () => {
     }
   };
 
+  // Step 3 -> Generate AI Python Script
+  const handleGenerateCode = async () => {
+    setIsGeneratingCode(true);
+    try {
+      const res = await fetch('/api/ai/code/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChatId,
+          topic: topic || activeChat?.name || 'Untitled Project',
+          genre,
+          mood: selectedMoods[0] || 'energetic',
+          bpm,
+          key: rootKey,
+          sections: activeChat?.sections,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCustomPythonCode(data.code);
+        setCodeLinesAdded(data.linesAdded || data.lineCount || 0);
+        setCodeLinesRemoved(0);
+        setCodeDiffSummary(data.summary || 'Generated custom multi-track Python composition');
+        setCodeAccepted(true);
+        setReviewSubTab('code');
+        showSnackbar(`AI wrote ${data.lineCount} lines of Python composition code`);
+      } else {
+        const err = await res.json();
+        showSnackbar(`Code generation failed: ${err.error || 'Server error'}`);
+      }
+    } catch (e: any) {
+      showSnackbar(`Network error: ${e.message}`);
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  };
+
+  // Step 3 -> Tweak AI Python Script
+  const handleEditCode = async () => {
+    if (!codeTweakInput.trim() || !customPythonCode) return;
+    setIsEditingCode(true);
+    try {
+      const res = await fetch('/api/ai/code/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: activeChatId,
+          code: customPythonCode,
+          instruction: codeTweakInput.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCustomPythonCode(data.code);
+        setCodeLinesAdded(data.linesAdded || 0);
+        setCodeLinesRemoved(data.linesRemoved || 0);
+        setCodeDiffSummary(data.summary || 'Updated Python composition code');
+        setCodeTweakInput('');
+        showSnackbar(`Updated code: +${data.linesAdded} / -${data.linesRemoved} lines`);
+      } else {
+        const err = await res.json();
+        showSnackbar(`Code tweak failed: ${err.error}`);
+      }
+    } catch (e: any) {
+      showSnackbar(`Error: ${e.message}`);
+    } finally {
+      setIsEditingCode(false);
+    }
+  };
+
   // Step 4 -> Generate Music Track
   const handleStartMusicGeneration = async () => {
     setCurrentStep(4);
@@ -308,11 +391,23 @@ export const ChatCreationPage: React.FC = () => {
     });
 
     try {
-      const res = await fetch('/api/generate-music', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: activeChatId }),
-      });
+      let res;
+      if (customPythonCode && codeAccepted) {
+        res = await fetch('/api/ai/code/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId: activeChatId,
+            code: customPythonCode,
+          }),
+        });
+      } else {
+        res = await fetch('/api/generate-music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: activeChatId }),
+        });
+      }
 
       clearInterval(stageInterval);
 
@@ -955,83 +1050,270 @@ export const ChatCreationPage: React.FC = () => {
       )}
 
       {/* =========================================================================
-          STEP 3: REVIEW (Side-by-Side Comparison)
+          STEP 3: REVIEW (Side-by-Side Comparison & Python Code Customizer)
           ========================================================================= */}
       {currentStep === 3 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          <div>
-            <h2 style={{ fontSize: '28px', marginBottom: '8px' }}>Review & Finalize</h2>
-            <p style={{ color: 'var(--color-text-secondary)', fontSize: '15px' }}>
-              Compare style and lyrics side by side before rendering your multi-track music arrangement.
-            </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h2 style={{ fontSize: '28px', marginBottom: '8px' }}>Review & Finalize</h2>
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: '15px' }}>
+                Compare musical styling, review synchronized lyrics, and customize the AI Python composition script.
+              </p>
+            </div>
+
+            {/* Subtab Toggle Buttons */}
+            <div style={{ display: 'flex', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', padding: '3px', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setReviewSubTab('blueprint')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: reviewSubTab === 'blueprint' ? 'var(--color-primary)' : 'transparent',
+                  color: reviewSubTab === 'blueprint' ? '#000' : 'var(--color-text)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <span className="material-icons-round" style={{ fontSize: '16px' }}>tune</span>
+                <span>Musical Blueprint</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewSubTab('code');
+                  if (!customPythonCode) {
+                    handleGenerateCode();
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: reviewSubTab === 'code' ? 'var(--color-primary)' : 'transparent',
+                  color: reviewSubTab === 'code' ? '#000' : 'var(--color-text)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <span className="material-icons-round" style={{ fontSize: '16px' }}>code</span>
+                <span>Python Composition Script</span>
+                {customPythonCode && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      padding: '1px 6px',
+                      borderRadius: '10px',
+                      backgroundColor: reviewSubTab === 'code' ? 'rgba(0,0,0,0.2)' : 'var(--color-primary)',
+                      color: reviewSubTab === 'code' ? '#000' : '#000',
+                      fontWeight: 700,
+                    }}
+                  >
+                    +{codeLinesAdded || customPythonCode.split('\n').length}L
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-            {/* Left: Style Card */}
+          {/* Subtab 1: Blueprint View */}
+          {reviewSubTab === 'blueprint' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+              {/* Left: Style Card */}
+              <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-outline)', paddingBottom: '12px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '16px' }}>Musical Styling</span>
+                  <span className="chip chip-active" style={{ height: '24px', fontSize: '11px', textTransform: 'capitalize' }}>
+                    {genre}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '14px' }}>
+                  <div>
+                    <span style={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}>Song Topic:</span>
+                    <div style={{ fontWeight: 600, fontSize: '16px' }}>{topic || activeChat?.name}</div>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}>Identity Formula:</span>
+                    <div style={{ fontWeight: 500, color: 'var(--color-primary)' }}>{identityLine}</div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--color-outline)' }}>
+                    <span>Tempo & Key:</span>
+                    <span className="mono" style={{ fontWeight: 600 }}>{bpm} BPM · Key {rootKey} {scale}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Vocal Delivery:</span>
+                    <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{vocalDelivery}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Humanization:</span>
+                    <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>Natural (Active)</span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Python Composition:</span>
+                    <span style={{ color: codeAccepted ? 'var(--color-primary)' : 'var(--color-text-secondary)', fontWeight: 600 }}>
+                      {codeAccepted ? 'Custom Script Ready' : 'Standard Synthesizer'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Lyrics with Timestamps Card */}
+              <div className="card" style={{ padding: '24px', maxHeight: '420px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-outline)', paddingBottom: '12px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '16px' }}>Lyrical Synchronization</span>
+                  <span className="mono" style={{ fontSize: '12px', color: 'var(--color-primary)' }}>
+                    ~03:05 Total
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {Object.entries(lyrics).map(([sec, lines]) => (
+                    <div key={sec}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                        {sec}
+                      </div>
+                      {lines.map((l, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'baseline', gap: '10px', fontSize: '13px', padding: '3px 0' }}>
+                          <span className="mono" style={{ color: 'var(--color-text-secondary)', fontSize: '11px', minWidth: '60px' }}>
+                            [{Math.floor(idx * 4)}s]
+                          </span>
+                          <span style={{ color: 'var(--color-text)' }}>{l}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 2: Python Code & Composition Engine */}
+          {reviewSubTab === 'code' && (
             <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-outline)', paddingBottom: '12px' }}>
-                <span style={{ fontWeight: 700, fontSize: '16px' }}>Musical Styling</span>
-                <span className="chip chip-active" style={{ height: '24px', fontSize: '11px', textTransform: 'capitalize' }}>
-                  {genre}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span className="material-icons-round" style={{ color: 'var(--color-primary)' }}>terminal</span>
+                  <span style={{ fontWeight: 700, fontSize: '16px' }}>composition.py · Multi-Track MIDI Architecture</span>
+                  {customPythonCode && (
+                    <span className="chip chip-active" style={{ height: '22px', fontSize: '11px' }}>
+                      +{codeLinesAdded || 180} lines · {customPythonCode.split('\n').length} lines
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={handleGenerateCode}
+                    disabled={isGeneratingCode}
+                    className="btn btn-outlined"
+                    style={{ height: '32px', fontSize: '12px' }}
+                  >
+                    <span className="material-icons-round">smart_toy</span>
+                    <span>{isGeneratingCode ? 'Writing Python...' : 'Regenerate Script'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCodeAccepted(true);
+                      showSnackbar('Accepted Python script: will be executed upon rendering');
+                    }}
+                    className={`btn ${codeAccepted ? 'btn-primary' : 'btn-outlined'}`}
+                    style={{ height: '32px', fontSize: '12px' }}
+                  >
+                    <span className="material-icons-round">check_circle</span>
+                    <span>{codeAccepted ? 'Script Accepted' : 'Accept Script'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCodeAccepted(false);
+                      showSnackbar('Reverted to standard procedural synthesizer');
+                    }}
+                    className="btn btn-outlined"
+                    style={{ height: '32px', fontSize: '12px' }}
+                  >
+                    <span className="material-icons-round">close</span>
+                    <span>Use Standard Synth</span>
+                  </button>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '14px' }}>
-                <div>
-                  <span style={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}>Song Topic:</span>
-                  <div style={{ fontWeight: 600, fontSize: '16px' }}>{topic || activeChat?.name}</div>
+              {codeDiffSummary && (
+                <div style={{ padding: '10px 14px', borderRadius: '6px', backgroundColor: 'rgba(110, 68, 255, 0.1)', border: '1px solid rgba(110, 68, 255, 0.25)', fontSize: '12px', color: 'var(--color-text)' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>Tension & Arrangement Architecture: </span>
+                  {codeDiffSummary}
                 </div>
+              )}
 
-                <div>
-                  <span style={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}>Identity Formula:</span>
-                  <div style={{ fontWeight: 500, color: 'var(--color-primary)' }}>{identityLine}</div>
-                </div>
+              {/* Code Textarea Editor */}
+              <div style={{ position: 'relative' }}>
+                <textarea
+                  value={customPythonCode}
+                  onChange={e => setCustomPythonCode(e.target.value)}
+                  placeholder="Click 'AI Write Python Script' to have the AI write a custom composition script for this track..."
+                  spellCheck={false}
+                  style={{
+                    width: '100%',
+                    height: '380px',
+                    backgroundColor: '#07060A',
+                    color: '#E2E8F0',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: '12px',
+                    lineHeight: 1.6,
+                    resize: 'vertical',
+                    tabSize: 4,
+                    whiteSpace: 'pre',
+                  }}
+                />
+              </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--color-outline)' }}>
-                  <span>Tempo & Key:</span>
-                  <span className="mono" style={{ fontWeight: 600 }}>{bpm} BPM · Key {rootKey} {scale}</span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Vocal Delivery:</span>
-                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{vocalDelivery}</span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Humanization:</span>
-                  <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>Natural (Active)</span>
-                </div>
+              {/* AI Code Tweak Box */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={codeTweakInput}
+                  onChange={e => setCodeTweakInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleEditCode()}
+                  placeholder='Ask AI to adjust script: e.g. "Add a heavier beat drop", "Double-time snare in climb", "Change BPM to 128"...'
+                  className="input"
+                  style={{ flex: 1, height: '40px', fontSize: '13px' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleEditCode}
+                  disabled={isEditingCode || !codeTweakInput.trim()}
+                  className="btn btn-primary"
+                  style={{ height: '40px', padding: '0 18px', fontSize: '13px' }}
+                >
+                  <span className="material-icons-round">auto_fix_high</span>
+                  <span>{isEditingCode ? 'Adjusting...' : 'Tweak Script'}</span>
+                </button>
               </div>
             </div>
-
-            {/* Right: Lyrics with Timestamps Card */}
-            <div className="card" style={{ padding: '24px', maxHeight: '420px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-outline)', paddingBottom: '12px' }}>
-                <span style={{ fontWeight: 700, fontSize: '16px' }}>Lyrical Synchronization</span>
-                <span className="mono" style={{ fontSize: '12px', color: 'var(--color-primary)' }}>
-                  ~03:05 Total
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {Object.entries(lyrics).map(([sec, lines]) => (
-                  <div key={sec}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', marginBottom: '6px' }}>
-                      {sec}
-                    </div>
-                    {lines.map((l, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'baseline', gap: '10px', fontSize: '13px', padding: '3px 0' }}>
-                        <span className="mono" style={{ color: 'var(--color-text-secondary)', fontSize: '11px', minWidth: '60px' }}>
-                          [{Math.floor(idx * 4)}s]
-                        </span>
-                        <span style={{ color: 'var(--color-text)' }}>{l}</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* Full-Width Generate Action */}
           <div
@@ -1047,23 +1329,38 @@ export const ChatCreationPage: React.FC = () => {
             }}
           >
             <div>
-              <div style={{ fontWeight: 700, fontSize: '16px', marginBottom: '4px' }}>
-                Ready to render MIDI and audio tracks
+              <div style={{ fontWeight: 700, fontSize: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Ready to render multi-track master</span>
+                <span className="chip chip-active" style={{ height: '22px', fontSize: '11px' }}>
+                  {customPythonCode && codeAccepted ? 'Custom Python Engine Active' : 'Standard Synthesizer'}
+                </span>
               </div>
               <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-                Creates 5 Standard MIDI tracks and converts directly to a stereo 192k MP3 file.
+                Creates 5 Standard MIDI tracks (Chords, Bass, Lead, Percussion) and renders a 192k MP3 master via FluidSynth.
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleStartMusicGeneration}
-              className="btn btn-gradient"
-              style={{ height: '56px', padding: '0 32px', fontSize: '16px', fontWeight: 700 }}
-            >
-              <span className="material-icons-round">graphic_eq</span>
-              <span>Generate Music Track</span>
-            </button>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setRoute('video')}
+                className="btn btn-outlined"
+                style={{ height: '52px', padding: '0 18px', fontSize: '14px' }}
+              >
+                <span className="material-icons-round">movie_filter</span>
+                <span>Open 3D Studio</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartMusicGeneration}
+                className="btn btn-gradient"
+                style={{ height: '56px', padding: '0 32px', fontSize: '16px', fontWeight: 700 }}
+              >
+                <span className="material-icons-round">graphic_eq</span>
+                <span>Generate Music Track</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1218,7 +1515,40 @@ export const ChatCreationPage: React.FC = () => {
                 <span>Continue to Iterate</span>
               </button>
 
-              {/* Button 4: Download MP3 */}
+              {/* Button 4: Open 3D Video Studio */}
+              <button
+                type="button"
+                onClick={() => setRoute('video')}
+                className="btn btn-outlined"
+                style={{ height: '48px', fontSize: '14px', borderColor: 'var(--color-primary)' }}
+              >
+                <span className="material-icons-round" style={{ color: 'var(--color-primary)' }}>movie_filter</span>
+                <span>Open in 3D Video Studio</span>
+              </button>
+
+              {/* Button 5: Edit Python Code */}
+              <button
+                type="button"
+                onClick={() => setRoute('code')}
+                className="btn btn-outlined"
+                style={{ height: '48px', fontSize: '14px' }}
+              >
+                <span className="material-icons-round">terminal</span>
+                <span>Edit Python Script</span>
+              </button>
+
+              {/* Button 6: Re-Render Master */}
+              <button
+                type="button"
+                onClick={handleStartMusicGeneration}
+                className="btn btn-tonal"
+                style={{ height: '48px', fontSize: '14px' }}
+              >
+                <span className="material-icons-round">refresh</span>
+                <span>Re-Render Track Master</span>
+              </button>
+
+              {/* Button 7: Download MP3 */}
               {latestVersion && activeChatId && (
                 <a
                   href={`/api/chats/${activeChatId}/download/${latestVersion.mp3File}`}
@@ -1231,7 +1561,7 @@ export const ChatCreationPage: React.FC = () => {
                 </a>
               )}
 
-              {/* Button 5: Export Project (.zip) */}
+              {/* Button 8: Export Project (.zip) */}
               {activeChatId && (
                 <a
                   href={`/api/projects/${activeChatId}/export`}

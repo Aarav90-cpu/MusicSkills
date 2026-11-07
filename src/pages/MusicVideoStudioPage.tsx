@@ -25,8 +25,65 @@ export const MusicVideoStudioPage: React.FC = () => {
   const [selectedTrackLayer, setSelectedTrackLayer] = useState<string>('3d-scene');
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
+  // Layer visibility toggles
+  const [showParticles, setShowParticles] = useState<boolean>(true);
+  const [showVinyl, setShowVinyl] = useState<boolean>(true);
+  const [showWaveform, setShowWaveform] = useState<boolean>(true);
+  const [showLyrics, setShowLyrics] = useState<boolean>(true);
+  const [showCore, setShowCore] = useState<boolean>(true);
+
+  // Video Rendering state
+  const [isRenderingVideo, setIsRenderingVideo] = useState<boolean>(false);
+  const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
+
   // Three.js / WebGL Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Pre-load cover art image for vinyl label
+  const coverImageRef = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!activeChat) return;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = currentTrack?.coverArtUrl || activeChat.coverArtUrl || `/api/audio/${activeChat.id}/cover`;
+    img.onload = () => {
+      coverImageRef.current = img;
+    };
+    img.onerror = () => {
+      coverImageRef.current = null;
+    };
+  }, [activeChat?.id, activeChat?.coverArtUrl, currentTrack?.coverArtUrl]);
+
+  // Video Render Handler
+  const handleRenderVideo = async () => {
+    if (!activeChat) {
+      showSnackbar('Please select an active song project to render video');
+      return;
+    }
+
+    setIsRenderingVideo(true);
+    showSnackbar('Rendering 1080p Remotion video master via FFmpeg...');
+
+    try {
+      const res = await fetch(`/api/chats/${activeChat.id}/video/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setRenderedVideoUrl(data.downloadUrl);
+        showSnackbar('Video master rendered successfully! Ready for download.');
+      } else {
+        const err = await res.json();
+        showSnackbar(`Video render failed: ${err.error || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      showSnackbar(`Render error: ${e.message}`);
+    } finally {
+      setIsRenderingVideo(false);
+    }
+  };
 
   // Editable Composition Code
   const [compositionCode, setCompositionCode] = useState<string>(`// Remotion + Three.js 3D Reactive Music Video Composition
@@ -105,7 +162,7 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
     }
   };
 
-  // Simple, robust WebGL 3D Canvas rendering loop
+  // Enhanced Three.js WebGL / Canvas rendering loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || viewMode !== 'preview') return;
@@ -118,64 +175,194 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
     const renderFrame = () => {
       const width = canvas.width;
       const height = canvas.height;
-      ctx.fillStyle = '#08070D';
-      ctx.fillRect(0, 0, width, height);
-
       const cx = width / 2;
       const cy = height / 2;
 
+      // 1. Beat Drop & Energy Detection
+      const isDropSection = activeChat?.sections?.some(
+        sec => (sec.energy === 'high' || sec.energy === 'climax') && sec.name.toLowerCase().includes('drop')
+      ) || (isPlaying && Math.sin(currentTime * 0.5) > 0.4);
+
+      // Background with reactive radial bloom
+      const bgGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, width * 0.7);
+      if (isDropSection && isPlaying) {
+        bgGrad.addColorStop(0, 'rgba(45, 18, 77, 0.95)');
+        bgGrad.addColorStop(0.6, '#0B0A14');
+        bgGrad.addColorStop(1, '#050408');
+      } else {
+        bgGrad.addColorStop(0, '#100E1D');
+        bgGrad.addColorStop(0.7, '#08070D');
+        bgGrad.addColorStop(1, '#040306');
+      }
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, width, height);
+
       // Pulse radius based on audio activity
-      const beatPulse = isPlaying ? Math.sin(currentTime * 8) * 15 : 0;
-      const baseRadius = 80 + beatPulse;
+      const beatPulse = isPlaying ? Math.sin(currentTime * 8) * 16 : 0;
+      const baseRadius = 75 + beatPulse;
 
-      // 1. Draw glowing 3D particle tunnel
-      const numParticles = 180;
-      for (let i = 0; i < numParticles; i++) {
-        const angle = (i / numParticles) * Math.PI * 2 + currentTime * 0.4;
-        const depth = ((i * 15 + currentTime * 80) % 800) / 800;
-        const pRadius = baseRadius * (1 + depth * 3);
+      // 2. Glowing 3D Particle Tunnel
+      if (showParticles) {
+        const numParticles = 220;
+        const speedMult = isDropSection ? 2.2 : 1.0;
+        for (let i = 0; i < numParticles; i++) {
+          const angle = (i / numParticles) * Math.PI * 2 + currentTime * 0.35 * speedMult;
+          const depth = ((i * 12 + currentTime * 90 * speedMult) % 900) / 900;
+          const pRadius = baseRadius * (1 + depth * 3.8);
 
-        const x = cx + Math.cos(angle) * pRadius;
-        const y = cy + Math.sin(angle) * pRadius;
-        const size = (1 - depth) * 4 + 1;
+          const x = cx + Math.cos(angle) * pRadius;
+          const y = cy + Math.sin(angle) * pRadius;
+          const size = (1 - depth) * 4.5 + 1;
 
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(110, 68, 255, 0.7)' : 'rgba(60, 196, 178, 0.7)';
+          ctx.fillStyle = i % 2 === 0 ? 'rgba(110, 68, 255, 0.75)' : 'rgba(60, 196, 178, 0.75)';
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 3. Central Geometric Wireframe Polyhedral Core
+      if (showCore) {
+        ctx.strokeStyle = isDropSection ? 'rgba(255, 79, 163, 0.6)' : 'rgba(110, 68, 255, 0.4)';
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
+        for (let side = 0; side < 8; side++) {
+          const sAngle = (side / 8) * Math.PI * 2 + currentTime * 0.5;
+          const sx = cx + Math.cos(sAngle) * (baseRadius * 0.85);
+          const sy = cy + Math.sin(sAngle) * (baseRadius * 0.85);
+          if (side === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+
+        // Inner counter-rotating ring
+        ctx.strokeStyle = 'rgba(60, 196, 178, 0.45)';
+        ctx.beginPath();
+        for (let side = 0; side < 6; side++) {
+          const sAngle = (side / 6) * Math.PI * 2 - currentTime * 0.7;
+          const sx = cx + Math.cos(sAngle) * (baseRadius * 0.5);
+          const sy = cy + Math.sin(sAngle) * (baseRadius * 0.5);
+          if (side === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      // 4. 3D Spinning Vinyl Record with Embedded Album Cover Art
+      if (showVinyl) {
+        const vinylRadius = 60 + (isPlaying ? Math.sin(currentTime * 8) * 3 : 0);
+        const vinylX = cx;
+        const vinylY = cy;
+        const rotAngle = currentTime * 1.8;
+
+        ctx.save();
+        ctx.translate(vinylX, vinylY);
+        ctx.rotate(rotAngle);
+
+        // Vinyl outer disc
+        ctx.beginPath();
+        ctx.arc(0, 0, vinylRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#111016';
         ctx.fill();
+        ctx.strokeStyle = '#252332';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Subtle concentric groove rings
+        for (let r = vinylRadius - 8; r > 32; r -= 6) {
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // Center label with Album Cover Art
+        const labelRadius = 26;
+        ctx.beginPath();
+        ctx.arc(0, 0, labelRadius, 0, Math.PI * 2);
+        ctx.clip();
+
+        if (coverImageRef.current && coverImageRef.current.complete) {
+          ctx.drawImage(
+            coverImageRef.current,
+            -labelRadius,
+            -labelRadius,
+            labelRadius * 2,
+            labelRadius * 2
+          );
+        } else {
+          // Gradient label placeholder
+          const labelGrad = ctx.createLinearGradient(-labelRadius, -labelRadius, labelRadius, labelRadius);
+          labelGrad.addColorStop(0, '#6E44FF');
+          labelGrad.addColorStop(1, '#3CC4B2');
+          ctx.fillStyle = labelGrad;
+          ctx.fillRect(-labelRadius, -labelRadius, labelRadius * 2, labelRadius * 2);
+        }
+
+        // Center spindle hole
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#050408';
+        ctx.fill();
+        ctx.restore();
       }
 
-      // 2. Draw central geometric wireframe core (reactive to beat)
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      for (let side = 0; side < 6; side++) {
-        const sAngle = (side / 6) * Math.PI * 2 + currentTime * 0.6;
-        const sx = cx + Math.cos(sAngle) * (baseRadius * 0.7);
-        const sy = cy + Math.sin(sAngle) * (baseRadius * 0.7);
-        if (side === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
+      // 5. Reactive 3D Audio Spectrum Ribbon across bottom
+      if (showWaveform) {
+        const numBars = 52;
+        const barWidth = width / numBars;
+        for (let b = 0; b < numBars; b++) {
+          const norm = b / numBars;
+          const harmonic = isPlaying
+            ? Math.abs(Math.sin(currentTime * 6 + norm * Math.PI * 4)) * 0.6 +
+              Math.abs(Math.sin(currentTime * 12 + norm * Math.PI * 8)) * 0.4
+            : 0.12;
+          const barHeight = harmonic * 65 + 4;
+          const bx = b * barWidth;
+          const by = height - barHeight - 4;
+
+          const barGrad = ctx.createLinearGradient(bx, by, bx, height);
+          barGrad.addColorStop(0, '#3CC4B2');
+          barGrad.addColorStop(0.5, '#6E44FF');
+          barGrad.addColorStop(1, 'rgba(110, 68, 255, 0.1)');
+
+          ctx.fillStyle = barGrad;
+          ctx.fillRect(bx + 1, by, barWidth - 2, barHeight);
+        }
       }
-      ctx.closePath();
-      ctx.stroke();
 
-      // 3. Draw Remotion-style Watermark / Frame overlay
-      ctx.font = '12px JetBrains Mono, monospace';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.fillText(
-        `REMOTION PREVIEW · FRAME ${currentFrame} / ${totalFrames} · ${(currentTime).toFixed(2)}s`,
-        24,
-        32
-      );
+      // 6. Kinetic Lyrics Typography Overlay
+      if (showLyrics && currentTrack) {
+        let activeLine = currentTrack.songName;
+        if (currentTrack.lyrics && Object.keys(currentTrack.lyrics).length > 0) {
+          const flatLines = Object.values(currentTrack.lyrics).flat();
+          if (flatLines.length > 0) {
+            const lineIdx = Math.floor((currentTime / Math.max(1, duration || 180)) * flatLines.length) % flatLines.length;
+            activeLine = flatLines[lineIdx] || activeLine;
+          }
+        }
 
-      // 4. Draw active subtitle overlay
-      if (currentTrack) {
-        ctx.font = '700 20px Inter, sans-serif';
+        ctx.save();
+        ctx.font = '700 22px Inter, sans-serif';
         ctx.fillStyle = '#FFFFFF';
         ctx.textAlign = 'center';
-        ctx.fillText(currentTrack.songName, cx, height - 48);
-        ctx.textAlign = 'left';
+        ctx.shadowColor = 'rgba(110, 68, 255, 0.8)';
+        ctx.shadowBlur = 16;
+        ctx.fillText(activeLine, cx, height - 74);
+        ctx.restore();
       }
+
+      // 7. Remotion Frame & Specs Watermark
+      ctx.font = '11px JetBrains Mono, monospace';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.fillText(
+        `REMOTION 3D VIEWPORT · FRAME ${currentFrame} / ${totalFrames} · ${(currentTime).toFixed(2)}s · 1080p 30FPS`,
+        24,
+        30
+      );
 
       animId = requestAnimationFrame(renderFrame);
     };
@@ -185,7 +372,7 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [viewMode, isPlaying, currentTime, currentFrame, totalFrames, currentTrack]);
+  }, [viewMode, isPlaying, currentTime, currentFrame, totalFrames, currentTrack, showParticles, showVinyl, showWaveform, showLyrics, showCore]);
 
   const formatTimeCode = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -295,7 +482,7 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
         </div>
 
         {/* Timecode & Frame Stats */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
             <span>{formatTimeCode(currentTime)}</span>
             <span>/</span>
@@ -304,6 +491,30 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
               Frame {currentFrame} ({fps} FPS)
             </span>
           </div>
+
+          {renderedVideoUrl && (
+            <a
+              href={renderedVideoUrl}
+              download
+              className="btn btn-outlined"
+              style={{ height: '32px', padding: '0 12px', fontSize: '12px', borderColor: 'var(--color-success)', color: 'var(--color-success)', textDecoration: 'none' }}
+            >
+              <span className="material-icons-round" style={{ fontSize: '16px' }}>download</span>
+              Download MP4 Master
+            </a>
+          )}
+
+          <button
+            onClick={handleRenderVideo}
+            disabled={isRenderingVideo}
+            className="btn btn-primary"
+            style={{ height: '32px', padding: '0 14px', fontSize: '12px', fontWeight: 600 }}
+          >
+            <span className="material-icons-round" style={{ fontSize: '16px' }}>
+              {isRenderingVideo ? 'hourglass_top' : 'video_settings'}
+            </span>
+            <span>{isRenderingVideo ? 'Rendering MP4...' : 'Render Video Master'}</span>
+          </button>
 
           <button
             onClick={() => showSnackbar('Exported Remotion Video Composition')}
@@ -455,15 +666,65 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
                   padding: '0 12px',
                   gap: '10px',
                   cursor: 'pointer',
+                  justifyContent: 'space-between',
                 }}
               >
-                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--color-primary)' }}>
-                  view_in_ar
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>Three.js 3D Visualizer Layer</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--color-primary)' }}>
+                    view_in_ar
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 600 }}>Three.js 3D Particle & Wireframe Core</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowParticles(!showParticles); }}
+                    className="btn-text"
+                    style={{ fontSize: '10px', height: '22px', padding: '0 6px', color: showParticles ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}
+                  >
+                    Particles: {showParticles ? 'ON' : 'OFF'}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowCore(!showCore); }}
+                    className="btn-text"
+                    style={{ fontSize: '10px', height: '22px', padding: '0 6px', color: showCore ? 'var(--color-secondary)' : 'var(--color-text-secondary)' }}
+                  >
+                    Core: {showCore ? 'ON' : 'OFF'}
+                  </button>
+                </div>
               </div>
 
-              {/* Track 2: Audio Waveform */}
+              {/* Track 2: Spinning 3D Vinyl Record with Album Cover */}
+              <div
+                onClick={() => setSelectedTrackLayer('vinyl')}
+                style={{
+                  height: '38px',
+                  borderRadius: '4px',
+                  backgroundColor: selectedTrackLayer === 'vinyl' ? 'rgba(110, 68, 255, 0.15)' : '#181622',
+                  border: '1px solid rgba(110, 68, 255, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 12px',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span className="material-icons-round" style={{ fontSize: '16px', color: '#B7A6FF' }}>
+                    album
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 600 }}>Spinning 3D Vinyl with Metadata Cover Art</span>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowVinyl(!showVinyl); }}
+                  className="btn-text"
+                  style={{ fontSize: '10px', height: '22px', padding: '0 6px', color: showVinyl ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}
+                >
+                  Vinyl: {showVinyl ? 'ON' : 'OFF'}
+                </button>
+              </div>
+
+              {/* Track 3: Audio Waveform Spectrum */}
               <div
                 onClick={() => setSelectedTrackLayer('audio')}
                 style={{
@@ -476,15 +737,25 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
                   padding: '0 12px',
                   gap: '10px',
                   cursor: 'pointer',
+                  justifyContent: 'space-between',
                 }}
               >
-                <span className="material-icons-round" style={{ fontSize: '16px', color: '#3CC4B2' }}>
-                  graphic_eq
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>Master Audio Track (192k MP3)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span className="material-icons-round" style={{ fontSize: '16px', color: '#3CC4B2' }}>
+                    graphic_eq
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 600 }}>Master Audio 3D Spectrum Ribbon</span>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowWaveform(!showWaveform); }}
+                  className="btn-text"
+                  style={{ fontSize: '10px', height: '22px', padding: '0 6px', color: showWaveform ? '#3CC4B2' : 'var(--color-text-secondary)' }}
+                >
+                  Spectrum: {showWaveform ? 'ON' : 'OFF'}
+                </button>
               </div>
 
-              {/* Track 3: Synced Lyric Subtitles */}
+              {/* Track 4: Synced Lyric Subtitles */}
               <div
                 onClick={() => setSelectedTrackLayer('lyrics')}
                 style={{
@@ -497,12 +768,22 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
                   padding: '0 12px',
                   gap: '10px',
                   cursor: 'pointer',
+                  justifyContent: 'space-between',
                 }}
               >
-                <span className="material-icons-round" style={{ fontSize: '16px', color: '#FFB020' }}>
-                  subtitles
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>Synced Kinetic Lyrics Layer</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span className="material-icons-round" style={{ fontSize: '16px', color: '#FFB020' }}>
+                    subtitles
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 600 }}>Synced Kinetic Lyrics Layer</span>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowLyrics(!showLyrics); }}
+                  className="btn-text"
+                  style={{ fontSize: '10px', height: '22px', padding: '0 6px', color: showLyrics ? '#FFB020' : 'var(--color-text-secondary)' }}
+                >
+                  Subtitles: {showLyrics ? 'ON' : 'OFF'}
+                </button>
               </div>
 
               {/* Track 4: Beat Drops & Energy Climbs */}

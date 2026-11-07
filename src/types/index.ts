@@ -61,6 +61,7 @@ export interface ChatSession {
   versions: SongVersion[];
   messages: ChatMessage[];
   takes: VocalTake[];
+  coverArtUrl?: string;
 }
 
 export interface ActivityEvent {
