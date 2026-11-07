@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
@@ -1535,6 +1536,143 @@ app.get('/api/lrclib/get', async (req, res) => {
     res.status(lrclibRes.status).json({ error: 'Not found on LRCLIB' });
   } catch (err: any) {
     res.status(502).json({ error: 'LRCLIB request failed', details: err.message });
+  }
+});
+
+app.post('/api/lrclib/publish', async (req, res) => {
+  const {
+    trackId,
+    trackName,
+    artistName,
+    albumName,
+    duration,
+    plainLyrics,
+    syncedLyrics,
+    isEmbeddedVerified,
+  } = req.body;
+
+  // STRICT VALIDATION: Embedded Lyrics are the ONLY ones allowed!
+  if (!isEmbeddedVerified) {
+    return res.status(403).json({
+      error: 'LRCLIB upload is restricted strictly to embedded lyrics extracted from the audio file. External or unverified lyrics cannot be uploaded.',
+    });
+  }
+
+  if (!plainLyrics && !syncedLyrics) {
+    return res.status(400).json({
+      error: 'No embedded lyrics provided to publish to LRCLIB.',
+    });
+  }
+
+  if (!trackName || !artistName) {
+    return res.status(400).json({
+      error: 'Both trackName and artistName are required to publish to LRCLIB.',
+    });
+  }
+
+  try {
+    // 1. Request PoW challenge from LRCLIB
+    const challengeRes = await fetch('https://lrclib.net/api/request-challenge', {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)',
+        'Lrclib-Client': 'MusicSkills-Studio/1.0.0',
+      },
+    });
+
+    if (!challengeRes.ok) {
+      throw new Error(`Failed to request LRCLIB challenge: ${challengeRes.statusText}`);
+    }
+
+    const challenge = await challengeRes.json();
+    const { prefix, target } = challenge;
+    if (!prefix || !target) {
+      throw new Error('Invalid challenge response received from LRCLIB');
+    }
+
+    // 2. Solve PoW challenge: find nonce where sha256(prefix + nonce) <= target
+    const targetBigInt = BigInt('0x' + target);
+    let nonce = 0;
+    let publishToken = '';
+    const maxIterations = 5000000;
+
+    while (nonce < maxIterations) {
+      const hash = crypto.createHash('sha256').update(`${prefix}${nonce}`).digest('hex');
+      if (BigInt('0x' + hash) <= targetBigInt) {
+        publishToken = `${prefix}:${nonce}`;
+        break;
+      }
+      nonce++;
+    }
+
+    if (!publishToken) {
+      throw new Error('Could not solve LRCLIB proof-of-work challenge within computational limit');
+    }
+
+    // 3. Submit lyrics payload to LRCLIB
+    const publishPayload: Record<string, any> = {
+      trackName: String(trackName).trim(),
+      artistName: String(artistName).trim(),
+      albumName: String(albumName || 'Single').trim(),
+      duration: Math.round(Number(duration) || 180),
+    };
+    if (plainLyrics && String(plainLyrics).trim()) {
+      publishPayload.plainLyrics = String(plainLyrics).trim();
+    }
+    if (syncedLyrics && String(syncedLyrics).trim()) {
+      publishPayload.syncedLyrics = String(syncedLyrics).trim();
+    }
+
+    const publishRes = await fetch('https://lrclib.net/api/publish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Publish-Token': publishToken,
+        'User-Agent': 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)',
+        'Lrclib-Client': 'MusicSkills-Studio/1.0.0',
+      },
+      body: JSON.stringify(publishPayload),
+    });
+
+    if (publishRes.ok) {
+      const publishedAt = new Date().toISOString();
+
+      // If associated with a chat session, record published status in chat.json
+      if (trackId) {
+        const chatRes = getChat(trackId);
+        if (chatRes) {
+          (chatRes.chat as any).publishedToLrclibAt = publishedAt;
+          saveChat(chatRes.chat);
+        }
+      }
+
+      broadcastEvent({
+        type: 'chats_updated',
+        message: `Embedded lyrics for "${trackName}" published to LRCLIB!`,
+        payload: { trackName, publishedAt },
+      });
+
+      return res.json({
+        success: true,
+        message: `Successfully published embedded lyrics to LRCLIB for "${trackName}"!`,
+        publishedAt,
+      });
+    } else {
+      const errText = await publishRes.text();
+      let errMsg = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        errMsg = parsed.message || parsed.error || errText;
+      } catch (_) {}
+      return res.status(publishRes.status).json({
+        error: `LRCLIB publish rejected: ${errMsg}`,
+      });
+    }
+  } catch (err: any) {
+    console.error('LRCLIB publish error:', err);
+    return res.status(502).json({
+      error: `LRCLIB publish failed: ${err.message || 'Unknown network error'}`,
+    });
   }
 });
 

@@ -9,8 +9,9 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { listChats, getChat, createChat, saveChat, sanitizeName, getChatsDir } from '../server/chats';
+import { listChats, getChat, createChat, saveChat, sanitizeName, getChatsDir, extractEmbeddedId3 } from '../server/chats';
 import { renderSong } from '../server/audio';
 import { loadConfig } from '../server/config';
 import { parseLyricsOutput, fetchLRCLibReference } from '../server/ai';
@@ -66,11 +67,17 @@ Commands:
   list                        List all active studio projects and their version counts
   show                        Inspect detailed project metadata, lyrics, and assets
   fetch-lyrics                Query and cache synchronized lyrics from LRCLIB for a project
+  publish-lyrics              Publish verified embedded lyrics to LRCLIB (Embedded lyrics only)
   status                      Check local render dependencies, SoundFonts, and external AI agents
 
 Options:
   --project-id, -p <id>       Target project ID (e.g. 7f3a9b)
   --name, -n, --title <str>   Song title (default: "Untitled Song")
+  --artist, -a <str>          Artist name override for lyrics publishing
+  --album <str>               Album name override for lyrics publishing
+  --duration <num>            Track duration in seconds
+  --audio <path>              Direct path to audio file with embedded lyrics (ID3 USLT/SYLT)
+  --dry-run                   Verify embedded lyrics and PoW solving without publishing
   --genre, -g <str>           Genre: pop, rock, hip-hop, electronic, phonk, indian, jazz, country, reggae, metal
   --mood, -m <str>            Mood: energetic, dark, melancholic, chill, uplifting, romantic
   --purpose <str>             Purpose: workout music, dance, driving, storytelling, festival
@@ -507,6 +514,232 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
           console.log(`   Track:    "${lyricsRef.trackName}" by ${lyricsRef.artistName}`);
           console.log(`   Type:     ${lyricsRef.syncedLyrics ? 'Synchronized (.lrc)' : 'Plain text'}`);
           console.log(`   Sections: ${Object.keys(parsed).join(', ')}`);
+        }
+        break;
+      }
+
+      case 'publish-lyrics': {
+        const projectId = args.id || args['project-id'] || args.p || args._[1];
+        let audioPath = args.audio || args.file;
+        let res = null;
+
+        if (projectId && !audioPath) {
+          res = getChat(projectId);
+          if (!res) {
+            const err = `Project "${projectId}" not found.`;
+            if (args.json) {
+              console.log(JSON.stringify({ success: false, error: err }));
+            } else {
+              console.error(`[Error] ${err}`);
+            }
+            process.exit(1);
+          }
+
+          // Look for audio files in project directory
+          const possibleFiles = ['v1_custom.mp3', 'v1.mp3', 'v1_custom.wav'];
+          for (const f of possibleFiles) {
+            const candidate = path.join(res.dirPath, f);
+            if (fs.existsSync(candidate)) {
+              audioPath = candidate;
+              break;
+            }
+          }
+
+          if (!audioPath) {
+            const files = fs.readdirSync(res.dirPath);
+            const mp3 = files.find(f => f.endsWith('.mp3'));
+            if (mp3) {
+              audioPath = path.join(res.dirPath, mp3);
+            }
+          }
+        }
+
+        if (!audioPath) {
+          const err = 'No audio file provided. Specify a valid project ID (--project-id <id>) or direct audio file path (--audio <path>).';
+          if (args.json) {
+            console.log(JSON.stringify({ success: false, error: err }));
+          } else {
+            console.error(`[Error] ${err}`);
+          }
+          process.exit(1);
+        }
+
+        if (!fs.existsSync(audioPath)) {
+          const err = `Audio file not found at path: ${audioPath}`;
+          if (args.json) {
+            console.log(JSON.stringify({ success: false, error: err }));
+          } else {
+            console.error(`[Error] ${err}`);
+          }
+          process.exit(1);
+        }
+
+        // Extract ID3 metadata directly from the audio file
+        const embedded = extractEmbeddedId3(audioPath);
+
+        // STRICT VALIDATION: Embedded Lyrics are the ONLY ones allowed!
+        if (!embedded.lyrics || !embedded.lyrics.trim()) {
+          const err = 'LRCLIB upload is restricted strictly to embedded lyrics extracted from the audio file. No embedded ID3 lyrics (USLT or SYLT) found in the audio file.';
+          if (args.json) {
+            console.log(JSON.stringify({
+              success: false,
+              error: err,
+              isEmbeddedVerified: false,
+            }));
+          } else {
+            console.error(`[Error] ${err}`);
+            console.error('External, generated, or unverified lyrics cannot be uploaded to LRCLIB.');
+          }
+          process.exit(1);
+        }
+
+        const rawLyrics = embedded.lyrics.trim();
+        const hasTimestamps = /\[\d{2}:\d{2}\.\d{2,3}\]/.test(rawLyrics);
+        let syncedLyrics = '';
+        let plainLyrics = '';
+
+        if (hasTimestamps) {
+          syncedLyrics = rawLyrics;
+          plainLyrics = rawLyrics.replace(/\[\d{2}:\d{2}\.\d{2,3}\]\s*/g, '').trim();
+        } else {
+          plainLyrics = rawLyrics;
+        }
+
+        const trackName = args.title || args.name || args.n || (res ? res.chat.name : path.basename(audioPath, path.extname(audioPath)));
+        const artistName = args.artist || args.a || (res ? res.chat.genre : 'MusicSkills Artist');
+        const albumName = args.album || (res ? res.chat.name : 'Single');
+        const duration = Math.round(Number(args.duration) || (res?.chat?.versions?.[0]?.durationSec) || 180);
+
+        if (!args.json) {
+          console.log(`[MusicSkills] Embedded lyrics verified from: ${path.basename(audioPath)}`);
+          console.log(`   Track:    "${trackName}" by ${artistName}`);
+          console.log(`   Album:    "${albumName}" (${duration}s)`);
+          console.log(`   Format:   ${syncedLyrics ? 'Synchronized (SYLT/LRC)' : 'Plain Text (USLT)'}`);
+          console.log(`   Status:   Priority 1 Embedded ID3 Verified`);
+        }
+
+        if (args['dry-run']) {
+          const dryRunResult = {
+            success: true,
+            dryRun: true,
+            isEmbeddedVerified: true,
+            trackName,
+            artistName,
+            albumName,
+            duration,
+            hasSyncedLyrics: Boolean(syncedLyrics),
+            plainLyricsLength: plainLyrics.length,
+            message: 'Embedded lyrics verified successfully. Ready for LRCLIB publication.',
+          };
+          if (args.json) {
+            console.log(JSON.stringify(dryRunResult, null, 2));
+          } else {
+            console.log('\n[Dry Run] Verification passed. Lyrics are 100% embedded and eligible for LRCLIB.');
+          }
+          break;
+        }
+
+        // 1. Request PoW Challenge
+        if (!args.json) {
+          console.log('[LRCLIB] Requesting proof-of-work challenge from https://lrclib.net/api/request-challenge...');
+        }
+
+        const challengeRes = await fetch('https://lrclib.net/api/request-challenge', {
+          method: 'POST',
+          headers: {
+            'User-Agent': 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)',
+            'Lrclib-Client': 'MusicSkills-Studio/1.0.0',
+          },
+        });
+
+        if (!challengeRes.ok) {
+          throw new Error(`Failed to request LRCLIB challenge: ${challengeRes.statusText}`);
+        }
+
+        const challenge = await challengeRes.json();
+        const { prefix, target } = challenge;
+        if (!prefix || !target) {
+          throw new Error('Invalid challenge response received from LRCLIB');
+        }
+
+        // 2. Solve PoW Challenge
+        const targetBigInt = BigInt('0x' + target);
+        let nonce = 0;
+        let publishToken = '';
+        const maxIterations = 5000000;
+
+        while (nonce < maxIterations) {
+          const hash = crypto.createHash('sha256').update(`${prefix}${nonce}`).digest('hex');
+          if (BigInt('0x' + hash) <= targetBigInt) {
+            publishToken = `${prefix}:${nonce}`;
+            break;
+          }
+          nonce++;
+        }
+
+        if (!publishToken) {
+          throw new Error('Could not solve LRCLIB proof-of-work challenge within computational limit');
+        }
+
+        if (!args.json) {
+          console.log(`[LRCLIB] PoW solved in ${nonce} iterations. Submitting embedded lyrics...`);
+        }
+
+        // 3. Publish to LRCLIB
+        const publishPayload = {
+          trackName: String(trackName).trim(),
+          artistName: String(artistName).trim(),
+          albumName: String(albumName).trim(),
+          duration,
+        };
+        if (plainLyrics) publishPayload.plainLyrics = plainLyrics;
+        if (syncedLyrics) publishPayload.syncedLyrics = syncedLyrics;
+
+        const publishRes = await fetch('https://lrclib.net/api/publish', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Publish-Token': publishToken,
+            'User-Agent': 'MusicSkills-Studio/1.0.0 (https://github.com/Aarav90-cpu/MusicSkills)',
+            'Lrclib-Client': 'MusicSkills-Studio/1.0.0',
+          },
+          body: JSON.stringify(publishPayload),
+        });
+
+        if (publishRes.ok) {
+          const publishedAt = new Date().toISOString();
+          if (res?.chat) {
+            res.chat.publishedToLrclibAt = publishedAt;
+            saveChat(res.chat);
+          }
+
+          if (args.json) {
+            console.log(JSON.stringify({
+              success: true,
+              message: `Successfully published embedded lyrics to LRCLIB for "${trackName}"!`,
+              trackName,
+              artistName,
+              publishedAt,
+              isEmbeddedVerified: true,
+            }, null, 2));
+          } else {
+            console.log(`[SUCCESS] Embedded lyrics published to LRCLIB for "${trackName}"!`);
+            console.log(`   Published At: ${publishedAt}`);
+          }
+        } else {
+          const errText = await publishRes.text();
+          let errMsg = errText;
+          try {
+            const parsed = JSON.parse(errText);
+            errMsg = parsed.message || parsed.error || errText;
+          } catch (_) {}
+          const fullErr = `LRCLIB publish rejected: ${errMsg}`;
+          if (args.json) {
+            console.log(JSON.stringify({ success: false, error: fullErr }));
+          } else {
+            console.error(`[Error] ${fullErr}`);
+          }
+          process.exit(1);
         }
         break;
       }

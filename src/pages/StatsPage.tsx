@@ -23,6 +23,7 @@ import {
   getSmartGenres,
   resolveTrackLyrics,
   fetchAndCacheLyricsForTrack,
+  publishEmbeddedLyricsToLRCLib,
   getLiveAudioUrl,
 } from '../utils/trackLibrary';
 import { TrackMetadataModal } from '../components/TrackMetadataModal';
@@ -328,6 +329,26 @@ export const StatsPage: React.FC = () => {
       showSnackbar(`Lyrics cached from LRCLIB for "${track.title}"!`);
     } catch (err: any) {
       showSnackbar(`LRCLIB error: ${err.message}`);
+    }
+  };
+
+  // Quick Publish Embedded Lyrics to LRCLIB from track row
+  const handleQuickPublishLRCLib = async (track: LibraryTrack, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const hasEmbedded = Boolean(track.embeddedSyncedLyrics?.trim() || track.embeddedStaticLyrics?.trim());
+    if (!hasEmbedded) {
+      showSnackbar(`LRCLIB upload locked: Only embedded lyrics in the audio file are allowed.`);
+      return;
+    }
+
+    showSnackbar(`Solving PoW challenge and publishing embedded lyrics for "${track.title}" to LRCLIB...`);
+    try {
+      const data = await publishEmbeddedLyricsToLRCLib(track);
+      showSnackbar(`Embedded lyrics published to LRCLIB for "${track.title}"!`);
+      const updated = { ...track, publishedToLrclibAt: data.publishedAt || new Date().toISOString() };
+      handleSaveTrackMetadata(updated);
+    } catch (err: any) {
+      showSnackbar(`LRCLIB upload failed: ${err.message}`);
     }
   };
 
@@ -743,6 +764,30 @@ export const StatsPage: React.FC = () => {
                           sync
                         </span>
                       </button>
+
+                      {/* Publish Embedded to LRCLIB (Embedded only) */}
+                      {(track.embeddedSyncedLyrics || track.embeddedStaticLyrics) && (
+                        <button
+                          onClick={e => handleQuickPublishLRCLib(track, e)}
+                          className="btn-text"
+                          style={{ width: '28px', height: '28px', padding: 0 }}
+                          title={
+                            track.publishedToLrclibAt
+                              ? `Published to LRCLIB on ${new Date(track.publishedToLrclibAt).toLocaleDateString()} (click to re-upload embedded lyrics)`
+                              : 'Publish verified embedded lyrics to LRCLIB'
+                          }
+                        >
+                          <span
+                            className="material-icons-round"
+                            style={{
+                              fontSize: '17px',
+                              color: track.publishedToLrclibAt ? '#00E676' : 'var(--color-primary)',
+                            }}
+                          >
+                            cloud_upload
+                          </span>
+                        </button>
+                      )}
 
                       {/* Favorite Star */}
                       <button

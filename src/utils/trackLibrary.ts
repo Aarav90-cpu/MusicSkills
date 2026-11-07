@@ -58,6 +58,7 @@ export interface LibraryTrack {
 
   lyricsSource: LyricsPrioritySource;
   lyricsCachedAt?: string;
+  publishedToLrclibAt?: string;
 
   // Custom key-value tags & notes
   customTags: CustomMetadataTag[];
@@ -362,6 +363,50 @@ export async function fetchAndCacheLyricsForTrack(
   }
 
   return track;
+}
+
+export async function publishEmbeddedLyricsToLRCLib(
+  track: LibraryTrack
+): Promise<{ success: boolean; message: string; publishedAt?: string }> {
+  // STRICT VALIDATION: Embedded lyrics are the only ones allowed!
+  const hasEmbedded = Boolean(
+    (track.embeddedSyncedLyrics && track.embeddedSyncedLyrics.trim().length > 0) ||
+    (track.embeddedStaticLyrics && track.embeddedStaticLyrics.trim().length > 0)
+  );
+
+  if (!hasEmbedded) {
+    throw new Error('Only embedded lyrics (Priority 1: engraved inside the audio file) are allowed to be published to LRCLIB.');
+  }
+
+  const res = await fetch('/api/lrclib/publish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      trackId: track.id,
+      trackName: track.title,
+      artistName: track.artist,
+      albumName: track.album,
+      duration: Math.round(track.durationSec || 180),
+      plainLyrics: track.embeddedStaticLyrics?.trim() || undefined,
+      syncedLyrics: track.embeddedSyncedLyrics?.trim() || undefined,
+      isEmbeddedVerified: true,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to publish embedded lyrics to LRCLIB');
+  }
+
+  // Update track in library storage
+  const tracks = loadLibraryTracks();
+  const idx = tracks.findIndex(t => t.id === track.id);
+  if (idx !== -1) {
+    tracks[idx].publishedToLrclibAt = data.publishedAt || new Date().toISOString();
+    saveLibraryTracks(tracks);
+  }
+
+  return data;
 }
 
 // --- SMART AUTO-GROUPING (ALBUMS, ARTISTS, GENRES) ---

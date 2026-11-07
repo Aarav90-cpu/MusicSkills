@@ -54,6 +54,7 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
   const [onlineSyncedLyrics, setOnlineSyncedLyrics] = useState(track.onlineSyncedLyrics || '');
   const [onlineStaticLyrics, setOnlineStaticLyrics] = useState(track.onlineStaticLyrics || '');
   const [isFetchingLrc, setIsFetchingLrc] = useState(false);
+  const [isPublishingLrc, setIsPublishingLrc] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Sync state whenever track changes
@@ -158,6 +159,46 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
     }
   };
 
+  // Publish Embedded Lyrics to LRCLIB (Strictly Embedded Lyrics Only)
+  const handlePublishToLRCLib = async () => {
+    const hasEmbedded = Boolean(embeddedSyncedLyrics.trim() || embeddedStaticLyrics.trim());
+    if (!hasEmbedded) {
+      setStatusMessage('Error: Only embedded lyrics (Priority 1 & 2: in audio file) are allowed to be uploaded to LRCLIB.');
+      return;
+    }
+
+    setIsPublishingLrc(true);
+    setStatusMessage('Solving proof-of-work challenge and publishing embedded lyrics to LRCLIB...');
+    try {
+      const res = await fetch('/api/lrclib/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trackId: track.id,
+          trackName: title.trim() || track.title,
+          artistName: artist.trim() || track.artist,
+          albumName: album.trim() || track.album,
+          duration: track.durationSec,
+          plainLyrics: embeddedStaticLyrics.trim() || undefined,
+          syncedLyrics: embeddedSyncedLyrics.trim() || undefined,
+          isEmbeddedVerified: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setStatusMessage(`Success: ${data.message || 'Embedded lyrics published to LRCLIB!'}`);
+        track.publishedToLrclibAt = data.publishedAt || new Date().toISOString();
+      } else {
+        setStatusMessage(`Publish failed: ${data.error || 'LRCLIB rejected the submission'}`);
+      }
+    } catch (err: any) {
+      setStatusMessage(`Error publishing to LRCLIB: ${err.message || 'Network error'}`);
+    } finally {
+      setIsPublishingLrc(false);
+    }
+  };
+
   // Save All Changes
   const handleSaveAll = () => {
     const updated: LibraryTrack = {
@@ -187,6 +228,7 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
       onlineStaticLyrics: onlineStaticLyrics.trim() || undefined,
       lyricsSource: resolved.source,
       lyricsCachedAt: (onlineSyncedLyrics || onlineStaticLyrics) ? new Date().toISOString() : undefined,
+      publishedToLrclibAt: track.publishedToLrclibAt,
     };
 
     onSave(updated);
@@ -607,18 +649,67 @@ export const TrackMetadataModal: React.FC<TrackMetadataModalProps> = ({
                 </div>
               </div>
 
-              {/* Force Re-fetch LRCLIB */}
-              <button
-                onClick={handleForceRefetchLyrics}
-                disabled={isFetchingLrc}
-                className="btn btn-tonal"
-                style={{ height: '36px', padding: '0 14px', fontSize: '12px' }}
-              >
-                <span className="material-icons-round" style={{ fontSize: '16px' }}>
-                  {isFetchingLrc ? 'sync' : 'cloud_download'}
-                </span>
-                {isFetchingLrc ? 'Fetching from LRCLIB...' : 'Force Re-fetch LRCLIB'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {/* Force Re-fetch LRCLIB */}
+                <button
+                  onClick={handleForceRefetchLyrics}
+                  disabled={isFetchingLrc || isPublishingLrc}
+                  className="btn btn-tonal"
+                  style={{ height: '36px', padding: '0 12px', fontSize: '12px' }}
+                >
+                  <span className="material-icons-round" style={{ fontSize: '16px' }}>
+                    {isFetchingLrc ? 'sync' : 'cloud_download'}
+                  </span>
+                  {isFetchingLrc ? 'Fetching...' : 'Re-fetch LRCLIB'}
+                </button>
+
+                {/* Publish to LRCLIB (Strictly Embedded Lyrics Only) */}
+                <button
+                  onClick={handlePublishToLRCLib}
+                  disabled={isPublishingLrc || isFetchingLrc || (!embeddedSyncedLyrics.trim() && !embeddedStaticLyrics.trim())}
+                  className="btn btn-primary"
+                  style={{
+                    height: '36px',
+                    padding: '0 14px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    opacity: (!embeddedSyncedLyrics.trim() && !embeddedStaticLyrics.trim()) ? 0.45 : 1,
+                  }}
+                  title={
+                    (!embeddedSyncedLyrics.trim() && !embeddedStaticLyrics.trim())
+                      ? "LRCLIB upload is restricted strictly to embedded lyrics extracted from the audio file."
+                      : "Publish verified embedded lyrics to LRCLIB"
+                  }
+                >
+                  <span className="material-icons-round" style={{ fontSize: '16px' }}>
+                    {isPublishingLrc ? 'hourglass_top' : 'cloud_upload'}
+                  </span>
+                  {isPublishingLrc ? 'Publishing...' : 'Publish to LRCLIB'}
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded Lyrics Eligibility Badge / Status */}
+            <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+              {(embeddedSyncedLyrics.trim() || embeddedStaticLyrics.trim()) ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00E676' }}>
+                  <span className="material-icons-round" style={{ fontSize: '16px' }}>verified</span>
+                  <span style={{ fontWeight: 600 }}>Embedded Lyrics Verified</span>
+                  <span style={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}>
+                    - Eligible to appear on LRCLIB
+                  </span>
+                  {track.publishedToLrclibAt && (
+                    <span className="chip" style={{ fontSize: '10px', height: '20px', padding: '0 6px', color: 'var(--color-text-dim)' }}>
+                      Published {new Date(track.publishedToLrclibAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-text-secondary)' }}>
+                  <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--color-warning)' }}>lock</span>
+                  <span>LRCLIB Upload Restricted: Embedded lyrics (Priority 1 & 2: in audio file) are the only ones allowed.</span>
+                </div>
+              )}
             </div>
 
             {statusMessage && (
