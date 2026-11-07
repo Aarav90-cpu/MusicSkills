@@ -272,3 +272,4 @@ export const StepSequencer: React.FC<StepSequencerProps> = ({
     </div>
   );
 };
+

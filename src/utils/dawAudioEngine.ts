@@ -603,3 +603,4 @@ function writeString(view: DataView, offset: number, string: string) {
 }
 
 export const dawAudioEngine = new DawAudioEngine();
+

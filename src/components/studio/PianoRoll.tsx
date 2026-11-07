@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { StudioNote } from '../../types';
-import { dawAudioEngine, pitchToFrequency } from '../../utils/dawAudioEngine';
+import { dawSynthEngine, SYNTH_PRESETS } from '../../utils/daw/synthEngine';
 
 interface PianoRollProps {
   notes: StudioNote[];
   onAddNote: (note: StudioNote) => void;
   onRemoveNote: (noteId: string) => void;
   onClearNotes: () => void;
-  instrument: 'piano' | 'bass' | 'synth' | 'pluck';
-  onChangeInstrument: (inst: 'piano' | 'bass' | 'synth' | 'pluck') => void;
+  instrument: string;
+  onChangeInstrument: (inst: string) => void;
   songKey: string;
   songScale: string;
   currentStepIndex: number;
@@ -45,22 +45,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   const [stampChordType, setStampChordType] = useState<string>('none');
 
   const playPitchSound = (pitch: string, durSteps = 2) => {
-    const freq = pitchToFrequency(pitch);
-    const durSec = (durSteps * 0.125);
-    switch (instrument) {
-      case 'piano':
-        dawAudioEngine.playPianoNote(undefined, freq, durSec);
-        break;
-      case 'bass':
-        dawAudioEngine.playBassNote(undefined, freq, durSec);
-        break;
-      case 'synth':
-        dawAudioEngine.playSynthNote(undefined, freq, durSec);
-        break;
-      case 'pluck':
-        dawAudioEngine.playPluckNote(undefined, freq, durSec);
-        break;
-    }
+    const durSec = durSteps * 0.125;
+    dawSynthEngine.playNote(pitch, durSec, 0.8, instrument);
   };
 
   const handleCellClick = (pitch: string, step: number) => {
@@ -151,13 +137,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
             <select
               className="input-field"
               value={instrument}
-              onChange={e => onChangeInstrument(e.target.value as any)}
+              onChange={e => onChangeInstrument(e.target.value)}
               style={{ height: '32px', fontSize: '12px', padding: '0 8px', cursor: 'pointer' }}
             >
-              <option value="piano">Grand Piano</option>
-              <option value="bass">Deep Bass</option>
-              <option value="synth">Synth Lead</option>
-              <option value="pluck">Melodic Pluck</option>
+              {Object.values(SYNTH_PRESETS).map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -311,3 +298,4 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     </div>
   );
 };
+

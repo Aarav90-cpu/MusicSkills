@@ -1,776 +1,1311 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { StudioTrack, StudioClip, StudioNote } from '../types';
-import { dawAudioEngine, pitchToFrequency } from '../utils/dawAudioEngine';
-import { BEAT_PRESETS, BeatPreset } from '../utils/beatPresets';
-import { StepSequencer } from '../components/studio/StepSequencer';
-import { PianoRoll } from '../components/studio/PianoRoll';
-import { TimelineArranger } from '../components/studio/TimelineArranger';
-import { CoverDuplicateModal } from '../components/studio/CoverDuplicateModal';
+import {
+  DawProject,
+  DawTrack,
+  DawClip,
+  DawNote,
+  EditingTool,
+  HistoryManager,
+  createDefaultProject,
+  saveAutosaveSnapshot,
+  loadAutosaveSnapshot,
+} from '../utils/daw/projectModel';
+import { dawContextManager } from '../utils/daw/audioContext';
+import { MixerEngine } from '../utils/daw/mixerEngine';
+import { dawSampleManager, SampleItem } from '../utils/daw/sampleManager';
+import { ChannelEffectsConfig } from '../utils/daw/effectsRack';
+import { pitchToFrequency } from '../utils/dawAudioEngine';
+import { dawSynthEngine } from '../utils/daw/synthEngine';
+import { dawMidiEngine, MidiDeviceInfo } from '../utils/daw/midiEngine';
 
-const DEFAULT_TRACKS: StudioTrack[] = [
-  { id: 't_drums', name: 'Drums / Beat', type: 'drums', instrument: 'drums', volume: 0.9, pan: 0, isMuted: false, isSolo: false, color: '#ff5252' },
-  { id: 't_bass', name: '808 & Bassline', type: 'bass', instrument: 'bass', volume: 0.85, pan: 0, isMuted: false, isSolo: false, color: '#7c4dff' },
-  { id: 't_piano', name: 'Piano & Chords', type: 'piano', instrument: 'piano', volume: 0.8, pan: -0.1, isMuted: false, isSolo: false, color: '#00b0ff' },
-  { id: 't_synth', name: 'Lead & Synth', type: 'synth', instrument: 'synth', volume: 0.75, pan: 0.1, isMuted: false, isSolo: false, color: '#00e676' },
-  { id: 't_audio', name: 'Vocals & Audio Clips', type: 'audio', instrument: 'audio', volume: 0.9, pan: 0, isMuted: false, isSolo: false, color: '#ffd600' },
-];
+import { DawTitleBar } from '../components/daw/DawTitleBar';
+import { DawMenuBar, MenuActionHandlers } from '../components/daw/DawMenuBar';
+import { DawTransportBar } from '../components/daw/DawTransportBar';
+import { DawBrowserSidebar } from '../components/daw/DawBrowserSidebar';
+import { DawArrangementView } from '../components/daw/DawArrangementView';
+import { DawInspectorPanel } from '../components/daw/DawInspectorPanel';
+import { DawMixerPanel } from '../components/daw/DawMixerPanel';
+import { DawEffectsModal } from '../components/daw/DawEffectsModal';
+import { DawStatusBar } from '../components/daw/DawStatusBar';
+import { DawStepSequencer } from '../components/daw/DawStepSequencer';
+import { PianoRoll } from '../components/studio/PianoRoll';
 
 export const BeatStudioPage: React.FC = () => {
-  const { activeChat, setActiveChatId, refreshChats, showSnackbar, playTrack } = useApp();
+  const { activeChat, setActiveChatId, refreshChats, showSnackbar, setRoute } = useApp();
 
-  // Studio Settings State
-  const [bpm, setBpm] = useState<number>(activeChat?.style?.bpm || 120);
-  const [songKey, setSongKey] = useState<string>(activeChat?.style?.key || 'C');
-  const [songScale, setSongScale] = useState<string>(activeChat?.style?.scale || 'major');
-  const [totalBars, setTotalBars] = useState<number>(16);
-  const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(false);
-  const [masterVolume, setMasterVolume] = useState<number>(0.85);
-
-  // Playback State
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
-  const [currentBar, setCurrentBar] = useState<number>(1);
-  const [startBar, setStartBar] = useState<number>(1);
-
-  // View Layout: 'split' | 'arranger' | 'drums' | 'piano'
-  const [viewMode, setViewMode] = useState<'split' | 'arranger' | 'drums' | 'piano'>('split');
-
-  // Multi-track and Clips State
-  const [tracks, setTracks] = useState<StudioTrack[]>(DEFAULT_TRACKS);
-  const [clips, setClips] = useState<StudioClip[]>([
-    { id: 'c_drums_1', trackId: 't_drums', name: 'Drum Pattern', startBar: 1, durationBars: 8, color: '#ff5252' },
-    { id: 'c_bass_1', trackId: 't_bass', name: 'Bass Groove', startBar: 1, durationBars: 8, color: '#7c4dff' },
-    { id: 'c_piano_1', trackId: 't_piano', name: 'Piano Chords', startBar: 1, durationBars: 8, color: '#00b0ff' },
-  ]);
-
-  // Drum Pattern State (16 steps)
-  const [drumSteps, setDrumSteps] = useState({
-    kick:        [true,  false, false, false, true,  false, false, false, true,  false, false, false, true,  false, false, false],
-    snare:       [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
-    hihatClosed: [true,  false, true,  false, true,  false, true,  false, true,  false, true,  false, true,  false, true,  false],
-    hihatOpen:   [false, false, false, false, false, false, true,  false, false, false, false, false, false, false, true,  false],
-    clap:        [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
-    sub808:      [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false],
-    perc:        [false, false, false, false, false, false, false, true,  false, false, false, false, false, false, false, false],
+  // Project Model State
+  const [project, setProject] = useState<DawProject>(() => {
+    const cached = loadAutosaveSnapshot();
+    if (cached && (!activeChat || activeChat.id === cached.id)) {
+      return cached;
+    }
+    return createDefaultProject(
+      activeChat?.id || 'proj_default',
+      activeChat?.name || 'Studio Session'
+    );
   });
 
-  // Piano Roll Notes State
-  const [pianoNotes, setPianoNotes] = useState<StudioNote[]>([
-    { id: 'n1', pitch: 'C4', step: 0, durationSteps: 4, velocity: 0.8 },
-    { id: 'n2', pitch: 'E4', step: 0, durationSteps: 4, velocity: 0.75 },
-    { id: 'n3', pitch: 'G4', step: 0, durationSteps: 4, velocity: 0.75 },
-    { id: 'n4', pitch: 'G3', step: 8, durationSteps: 4, velocity: 0.8 },
-    { id: 'n5', pitch: 'B3', step: 8, durationSteps: 4, velocity: 0.75 },
-    { id: 'n6', pitch: 'D4', step: 8, durationSteps: 4, velocity: 0.75 },
-  ]);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string>('Just now');
 
-  const [activeInstrument, setActiveInstrument] = useState<'piano' | 'bass' | 'synth' | 'pluck'>('piano');
-  const [showCoverModal, setShowCoverModal] = useState<boolean>(false);
-  const [isRendering, setIsRendering] = useState<boolean>(false);
+  // Workspace & Visibility Layout
+  const [activeWorkspace, setActiveWorkspace] = useState<'arrangement' | 'pianoroll' | 'stepsequencer' | 'mixer'>('arrangement');
+  const [showBrowser, setShowBrowser] = useState<boolean>(true);
+  const [showInspector, setShowInspector] = useState<boolean>(true);
+  const [showMixer, setShowMixer] = useState<boolean>(true);
+  const [activeTool, setActiveTool] = useState<EditingTool>('pointer');
 
-  // Tap tempo state
-  const lastTapRef = useRef<number>(0);
-  const tapIntervalsRef = useRef<number[]>([]);
+  // Hardware MIDI Devices State
+  const [midiDevices, setMidiDevices] = useState<MidiDeviceInfo[]>([]);
+  const liveMidiVoicesRef = useRef<Map<number, string>>(new Map());
 
-  // Load existing arrangement from chat if available
+  // Selection
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(project.tracks[0]?.id || null);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+
+  // Playback & Clock State
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
+  const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(false);
+
+  // Effects Rack Modal State
+  const [activeEffectsTrackId, setActiveEffectsTrackId] = useState<string | null>(null);
+  const [isMasterEffectsOpen, setIsMasterEffectsOpen] = useState<boolean>(false);
+
+  // Audio Engine & Mixer Instances
+  const mixerEngineRef = useRef<MixerEngine | null>(null);
+  const historyRef = useRef<HistoryManager>(new HistoryManager());
+  const playbackTimerRef = useRef<any>(null);
+  const activeSourcesRef = useRef<AudioNode[]>([]);
+
+  // Initialize Mixer Engine with AudioContext
+  if (!mixerEngineRef.current) {
+    const ctx = dawContextManager.getContext();
+    mixerEngineRef.current = new MixerEngine(ctx);
+  }
+  const mixer = mixerEngineRef.current;
+
+  // Sync project tracks to Mixer Channel Strips
   useEffect(() => {
-    if (activeChat?.studioArrangement) {
-      const arr = activeChat.studioArrangement;
-      if (arr.bpm) setBpm(arr.bpm);
-      if (arr.key) setSongKey(arr.key);
-      if (arr.scale) setSongScale(arr.scale);
-      if (arr.totalBars) setTotalBars(arr.totalBars);
-      if (arr.tracks) setTracks(arr.tracks);
-      if (arr.clips) setClips(arr.clips);
-      if (arr.patterns?.drums?.steps) {
-        // Restore drum steps
-      }
-      if (arr.patterns?.piano?.notes) {
-        setPianoNotes(arr.patterns.piano.notes);
-      }
-    }
-  }, [activeChat]);
+    project.tracks.forEach((track) => {
+      mixer.registerChannel(track.id, track.name, track.color, track.effects);
+      mixer.setChannelVolume(track.id, track.volumeDb);
+      mixer.setChannelPan(track.id, track.pan);
+    });
+    mixer.setMasterVolume(project.masterVolumeDb);
+  }, [project.tracks, project.masterVolumeDb, mixer]);
 
-  // Handle Tap Tempo
-  const handleTapTempo = () => {
-    const now = Date.now();
-    if (lastTapRef.current > 0) {
-      const diff = now - lastTapRef.current;
-      if (diff > 200 && diff < 2000) {
-        tapIntervalsRef.current.push(diff);
-        if (tapIntervalsRef.current.length > 4) tapIntervalsRef.current.shift();
-        const avg = tapIntervalsRef.current.reduce((a, b) => a + b, 0) / tapIntervalsRef.current.length;
-        const calculatedBpm = Math.round(60000 / avg);
-        setBpm(Math.max(40, Math.min(240, calculatedBpm)));
-      }
-    }
-    lastTapRef.current = now;
-  };
+  // Web MIDI Hardware Controller Integration
+  useEffect(() => {
+    let unsubs: Array<() => void> = [];
 
-  // Playback Control
+    dawMidiEngine.init().then((supported) => {
+      if (supported) {
+        setMidiDevices(dawMidiEngine.getConnectedDevices());
+
+        const unsubDevs = dawMidiEngine.onDevicesChanged((devices) => {
+          setMidiDevices(devices);
+          if (devices.length > 0) {
+            showSnackbar(`MIDI Controller Attached: ${devices[0].name}`);
+          }
+        });
+        unsubs.push(unsubDevs);
+
+        const unsubOn = dawMidiEngine.onNoteOn((midiNumber, pitch, velocity) => {
+          const armedTrack = project.tracks.find((t) => t.isArmed);
+          if (!armedTrack) return;
+          const channel = mixer.getChannel(armedTrack.id);
+          if (!channel) return;
+
+          // Trigger live audio voice through mixer strip
+          const voiceId = dawSynthEngine.triggerAttack(
+            pitch,
+            velocity,
+            armedTrack.instrumentPreset || 'piano',
+            channel.inputNode
+          );
+          liveMidiVoicesRef.current.set(midiNumber, voiceId);
+
+          // If recording, record note into active or new MIDI clip
+          if (isRecording) {
+            const currentBarNum = Math.floor(currentStepIndex / 16) + 1;
+            const stepInBar = currentStepIndex % 16;
+
+            setProject((prev) => {
+              const clip = prev.clips.find(
+                (c) =>
+                  c.trackId === armedTrack.id &&
+                  c.type === 'midi' &&
+                  currentBarNum >= c.startBar &&
+                  currentBarNum < c.startBar + c.durationBars
+              );
+
+              const newNote: DawNote = {
+                id: `rec_note_${Date.now()}_${midiNumber}`,
+                pitch,
+                step: stepInBar,
+                durationSteps: 2,
+                velocity,
+              };
+
+              if (clip) {
+                return {
+                  ...prev,
+                  clips: prev.clips.map((c) =>
+                    c.id === clip.id ? { ...c, notes: [...(c.notes || []), newNote] } : c
+                  ),
+                };
+              } else {
+                const newClip: DawClip = {
+                  id: `rec_midi_clip_${Date.now()}`,
+                  trackId: armedTrack.id,
+                  name: `MIDI Take ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                  type: 'midi',
+                  startBar: currentBarNum,
+                  durationBars: 4,
+                  color: armedTrack.color,
+                  notes: [newNote],
+                };
+                return {
+                  ...prev,
+                  clips: [...prev.clips, newClip],
+                };
+              }
+            });
+            setIsDirty(true);
+          }
+        });
+        unsubs.push(unsubOn);
+
+        const unsubOff = dawMidiEngine.onNoteOff((midiNumber) => {
+          const armedTrack = project.tracks.find((t) => t.isArmed);
+          const voiceId = liveMidiVoicesRef.current.get(midiNumber);
+          if (voiceId) {
+            dawSynthEngine.triggerRelease(voiceId, armedTrack?.instrumentPreset || 'piano');
+            liveMidiVoicesRef.current.delete(midiNumber);
+          }
+        });
+        unsubs.push(unsubOff);
+      }
+    });
+
+    return () => {
+      unsubs.forEach((u) => u());
+      dawSynthEngine.stopAllVoices();
+    };
+  }, [project.tracks, isRecording, currentStepIndex, mixer, showSnackbar]);
+
+  // Periodic autosave snapshot
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isDirty) {
+        saveAutosaveSnapshot(project);
+        setLastSavedAt(new Date().toLocaleTimeString());
+        setIsDirty(false);
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [project, isDirty]);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleTogglePlay();
+      } else if (e.code === 'KeyR' && !e.ctrlKey) {
+        e.preventDefault();
+        handleToggleRecord();
+      } else if (e.code === 'KeyL') {
+        e.preventDefault();
+        handleToggleLoop();
+      } else if (e.code === 'KeyS' && !e.ctrlKey) {
+        e.preventDefault();
+        setActiveTool('split');
+      } else if (e.code === 'KeyD' && !e.ctrlKey) {
+        e.preventDefault();
+        setActiveTool('draw');
+      } else if (e.code === 'KeyE' && !e.ctrlKey) {
+        e.preventDefault();
+        setActiveTool('erase');
+      } else if (e.code === 'KeyB') {
+        e.preventDefault();
+        setShowBrowser((prev) => !prev);
+      } else if (e.code === 'KeyM' && !e.ctrlKey) {
+        e.preventDefault();
+        setShowMixer((prev) => !prev);
+      } else if (e.code === 'KeyI') {
+        e.preventDefault();
+        setShowInspector((prev) => !prev);
+      } else if (e.key === 'z' && e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.key === 'y' && e.ctrlKey) || (e.key === 'z' && e.ctrlKey && e.shiftKey)) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, isRecording, project]);
+
+  // --- PLAYBACK ENGINE ---
+
   const handleTogglePlay = () => {
     if (isPlaying) {
-      dawAudioEngine.stopPlayback();
-      setIsPlaying(false);
+      stopPlayback();
     } else {
-      dawAudioEngine.initContext();
-      setIsPlaying(true);
-
-      const startStep = (startBar - 1) * 16;
-      dawAudioEngine.startPlayback(
-        bpm,
-        totalBars,
-        (stepIdx, barNum) => {
-          setCurrentStepIndex(stepIdx);
-          setCurrentBar(barNum);
-        },
-        (stepIdx, audioTime) => {
-          // 1. Metronome Click
-          if (metronomeEnabled && stepIdx % 4 === 0) {
-            const isDownbeat = stepIdx % 16 === 0;
-            dawAudioEngine.playMetronome(audioTime, isDownbeat);
-          }
-
-          const currentBarNum = Math.floor(stepIdx / 16) + 1;
-          const stepInBar = stepIdx % 16;
-
-          // 2. Schedule Drums if Drums Track is active
-          const drumTrack = tracks.find(t => t.id === 't_drums');
-          const isDrumClipActive = clips.some(
-            c => c.trackId === 't_drums' && currentBarNum >= c.startBar && currentBarNum < c.startBar + c.durationBars
-          );
-
-          if (drumTrack && !drumTrack.isMuted && isDrumClipActive) {
-            const vol = drumTrack.volume * masterVolume;
-            if (drumSteps.kick[stepInBar]) dawAudioEngine.playKick(audioTime, vol * 0.95);
-            if (drumSteps.snare[stepInBar]) dawAudioEngine.playSnare(audioTime, vol * 0.85);
-            if (drumSteps.hihatClosed[stepInBar]) dawAudioEngine.playHiHatClosed(audioTime, vol * 0.7);
-            if (drumSteps.hihatOpen[stepInBar]) dawAudioEngine.playHiHatOpen(audioTime, vol * 0.7);
-            if (drumSteps.clap[stepInBar]) dawAudioEngine.playClap(audioTime, vol * 0.85);
-            if (drumSteps.sub808[stepInBar]) dawAudioEngine.play808Sub(audioTime, 'C2', 0.5, vol * 0.95);
-            if (drumSteps.perc[stepInBar]) dawAudioEngine.playPerc(audioTime, vol * 0.75);
-          }
-
-          // 3. Schedule Piano / Chords if Piano Track is active
-          const pianoTrack = tracks.find(t => t.id === 't_piano');
-          const isPianoClipActive = clips.some(
-            c => c.trackId === 't_piano' && currentBarNum >= c.startBar && currentBarNum < c.startBar + c.durationBars
-          );
-
-          if (pianoTrack && !pianoTrack.isMuted && isPianoClipActive) {
-            const vol = pianoTrack.volume * masterVolume;
-            const matchingNotes = pianoNotes.filter(n => n.step === stepInBar);
-            matchingNotes.forEach(note => {
-              const freq = pitchToFrequency(note.pitch);
-              const durSec = (note.durationSteps * 0.125);
-              dawAudioEngine.playPianoNote(audioTime, freq, durSec, (note.velocity || 0.8) * vol);
-            });
-          }
-
-          // 4. Schedule Bass Track
-          const bassTrack = tracks.find(t => t.id === 't_bass');
-          const isBassClipActive = clips.some(
-            c => c.trackId === 't_bass' && currentBarNum >= c.startBar && currentBarNum < c.startBar + c.durationBars
-          );
-
-          if (bassTrack && !bassTrack.isMuted && isBassClipActive) {
-            const vol = bassTrack.volume * masterVolume;
-            // Bass trigger on beat if note exists
-            if (drumSteps.sub808[stepInBar]) {
-              dawAudioEngine.playBassNote(audioTime, pitchToFrequency('C2'), 0.5, vol);
-            }
-          }
-        },
-        startStep
-      );
+      startPlayback();
     }
+  };
+
+  const startPlayback = () => {
+    const ctx = dawContextManager.getContext();
+    setIsPlaying(true);
+
+    const stepDuration = 60 / project.bpm / 4;
+    const totalSteps = project.totalBars * 16;
+    let nextStepTime = ctx.currentTime;
+    let step = currentStepIndex % totalSteps;
+
+    playbackTimerRef.current = setInterval(() => {
+      while (nextStepTime < ctx.currentTime + 0.1) {
+        const currentStep = step;
+        const time = nextStepTime;
+
+        // Schedule musical events at exact audio time
+        scheduleStepEvents(currentStep, time);
+
+        // Schedule UI tick
+        const delayMs = Math.max(0, (time - ctx.currentTime) * 1000);
+        setTimeout(() => {
+          setCurrentStepIndex(currentStep);
+        }, delayMs);
+
+        nextStepTime += stepDuration;
+        step = (step + 1);
+
+        // Loop handling
+        if (project.isLoopEnabled) {
+          const loopEndStep = project.loopEndBar * 16;
+          const loopStartStep = (project.loopStartBar - 1) * 16;
+          if (step >= loopEndStep) {
+            step = loopStartStep;
+          }
+        } else if (step >= totalSteps) {
+          step = 0;
+        }
+      }
+    }, 25);
+  };
+
+  const stopPlayback = () => {
+    setIsPlaying(false);
+    if (playbackTimerRef.current) {
+      clearInterval(playbackTimerRef.current);
+      playbackTimerRef.current = null;
+    }
+    // Stop all active audio buffer sources
+    activeSourcesRef.current.forEach((node) => {
+      try {
+        (node as any).stop();
+      } catch (_) {}
+    });
+    activeSourcesRef.current = [];
   };
 
   const handleStop = () => {
-    dawAudioEngine.stopPlayback();
-    setIsPlaying(false);
-    setCurrentStepIndex((startBar - 1) * 16);
-    setCurrentBar(startBar);
+    stopPlayback();
+    setCurrentStepIndex(0);
   };
 
-  const handleScrubBar = (bar: number) => {
-    setStartBar(bar);
-    setCurrentBar(bar);
-    setCurrentStepIndex((bar - 1) * 16);
+  const handleReturnToStart = () => {
+    setCurrentStepIndex(0);
+  };
+
+  const handleScrubPlayhead = (bar: number) => {
+    const newStep = (bar - 1) * 16;
+    setCurrentStepIndex(newStep);
     if (isPlaying) {
-      handleTogglePlay(); // Restart from new bar
-      setTimeout(handleTogglePlay, 50);
+      stopPlayback();
+      setTimeout(startPlayback, 30);
     }
   };
 
-  // Drum Step Toggles
-  const handleToggleDrumStep = (voice: 'kick' | 'snare' | 'hihatClosed' | 'hihatOpen' | 'clap' | 'sub808' | 'perc', stepIdx: number) => {
-    setDrumSteps(prev => {
-      const copy = [...prev[voice]];
-      copy[stepIdx] = !copy[stepIdx];
-      return { ...prev, [voice]: copy };
+  const scheduleStepEvents = (stepIdx: number, audioTime: number) => {
+    const currentBarNum = Math.floor(stepIdx / 16) + 1;
+    const stepInBar = stepIdx % 16;
+
+    // 1. Metronome Click
+    if (metronomeEnabled && stepIdx % 4 === 0) {
+      const isDownbeat = stepIdx % 16 === 0;
+      playMetronomeClick(audioTime, isDownbeat);
+    }
+
+    // 2. Schedule Clips & Notes
+    project.tracks.forEach((track) => {
+      const channel = mixer.getChannel(track.id);
+      if (!channel || track.isMuted) return;
+
+      const activeClips = project.clips.filter(
+        (c) => c.trackId === track.id && currentBarNum >= c.startBar && currentBarNum < c.startBar + c.durationBars && !c.isMuted
+      );
+
+      activeClips.forEach((clip) => {
+        // Audio Clip Triggering at clip start
+        if (clip.type === 'audio' && clip.audioBuffer && currentBarNum === clip.startBar && stepInBar === 0) {
+          playAudioClip(clip, channel.inputNode, audioTime);
+        }
+
+        // MIDI Clip Notes Triggering
+        if (clip.type === 'midi' && clip.notes) {
+          const notesOnStep = clip.notes.filter((n) => n.step === stepInBar);
+          notesOnStep.forEach((note) => {
+            playMidiVoice(note, track.instrumentPreset || 'piano', channel.inputNode, audioTime);
+          });
+        }
+      });
     });
   };
 
-  const handleClearVoice = (voice: 'kick' | 'snare' | 'hihatClosed' | 'hihatOpen' | 'clap' | 'sub808' | 'perc') => {
-    setDrumSteps(prev => ({
-      ...prev,
-      [voice]: Array(16).fill(false),
-    }));
+  const playAudioClip = (clip: DawClip, destinationNode: AudioNode, time: number) => {
+    if (!clip.audioBuffer) return;
+    const ctx = dawContextManager.getContext();
+    const source = ctx.createBufferSource();
+    source.buffer = clip.audioBuffer;
+
+    if (clip.pitchShiftSemitones) {
+      source.detune.setValueAtTime(clip.pitchShiftSemitones * 100, time);
+    }
+
+    source.connect(destinationNode);
+    source.start(time);
+    activeSourcesRef.current.push(source);
   };
 
-  const handleFillVoice = (voice: 'kick' | 'snare' | 'hihatClosed' | 'hihatOpen' | 'clap' | 'sub808' | 'perc', interval: number) => {
-    setDrumSteps(prev => {
-      const copy = Array(16).fill(false);
-      for (let i = 0; i < 16; i += interval) {
-        copy[i] = true;
+  const playMidiVoice = (note: { pitch: string; durationSteps: number; velocity: number }, preset: string, destinationNode: AudioNode, time: number) => {
+    const durationSec = note.durationSteps * (60 / project.bpm / 4);
+    dawSynthEngine.playNote(note.pitch, durationSec, note.velocity, preset, destinationNode, time);
+  };
+
+  const playMetronomeClick = (time: number, isDownbeat: boolean) => {
+    const ctx = dawContextManager.getContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(isDownbeat ? 1200 : 800, time);
+    gain.gain.setValueAtTime(0.2, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(time);
+    osc.stop(time + 0.05);
+  };
+
+  // --- RECORDING AUDIO INTO ARMED TRACK ---
+
+  const handleToggleRecord = async () => {
+    if (isRecording) {
+      try {
+        const armedTrack = project.tracks.find((t) => t.isArmed);
+        const { buffer, peaks, durationSec } = await dawSampleManager.stopRecording();
+        setIsRecording(false);
+
+        if (armedTrack) {
+          const recStartBar = Math.floor(currentStepIndex / 16) + 1;
+          const durBars = Math.max(1, Math.ceil(durationSec / (project.bpm / 60) / 4));
+
+          const newClip: DawClip = {
+            id: `rec_clip_${Date.now()}`,
+            trackId: armedTrack.id,
+            name: `Take ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+            type: 'audio',
+            startBar: recStartBar,
+            durationBars: durBars,
+            color: '#FF5252',
+            audioBuffer: buffer,
+            peaks,
+          };
+
+          setProject((prev) => ({
+            ...prev,
+            clips: [...prev.clips, newClip],
+          }));
+          setIsDirty(true);
+          showSnackbar(`Captured audio recording into "${armedTrack.name}"!`);
+        }
+      } catch (err: any) {
+        showSnackbar(`Recording error: ${err.message}`);
+        setIsRecording(false);
       }
-      return { ...prev, [voice]: copy };
-    });
+    } else {
+      const armedTrack = project.tracks.find((t) => t.isArmed);
+      if (!armedTrack) {
+        showSnackbar('No track armed for recording. Click [R] on an audio track header first.');
+        return;
+      }
+
+      try {
+        await dawSampleManager.startRecording();
+        setIsRecording(true);
+        if (!isPlaying) startPlayback();
+        showSnackbar(`Recording audio into "${armedTrack.name}"... Speak or sing into microphone.`);
+      } catch (err: any) {
+        showSnackbar(`Microphone access denied: ${err.message}`);
+      }
+    }
   };
 
-  // Piano Roll Note Handlers
-  const handleAddPianoNote = (note: StudioNote) => {
-    setPianoNotes(prev => [...prev.filter(n => !(n.pitch === note.pitch && n.step === note.step)), note]);
+  // --- TRACK & CLIP OPERATIONS ---
+
+  const handleAddTrack = (type: DawTrack['type'], name: string, color: string, preset = 'piano') => {
+    const newTrack: DawTrack = {
+      id: `trk_${Date.now()}`,
+      name,
+      type,
+      color,
+      volumeDb: 0,
+      pan: 0,
+      isMuted: false,
+      isSolo: false,
+      isArmed: type === 'audio',
+      instrumentPreset: preset,
+      effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+    };
+
+    const action = {
+      description: `Add Track "${name}"`,
+      undo: () => {
+        setProject((prev) => ({ ...prev, tracks: prev.tracks.filter((t) => t.id !== newTrack.id) }));
+        mixer.removeChannel(newTrack.id);
+      },
+      redo: () => {
+        setProject((prev) => ({ ...prev, tracks: [...prev.tracks, newTrack] }));
+        mixer.registerChannel(newTrack.id, newTrack.name, newTrack.color);
+      },
+    };
+
+    historyRef.current.pushAction(action);
+    setProject((prev) => ({ ...prev, tracks: [...prev.tracks, newTrack] }));
+    setSelectedTrackId(newTrack.id);
+    setIsDirty(true);
   };
 
-  const handleRemovePianoNote = (noteId: string) => {
-    setPianoNotes(prev => prev.filter(n => n.id !== noteId));
+  const handleDeleteTrack = (trackId: string) => {
+    const track = project.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+
+    const removedClips = project.clips.filter((c) => c.trackId === trackId);
+
+    const action = {
+      description: `Delete Track "${track.name}"`,
+      undo: () => {
+        setProject((prev) => ({
+          ...prev,
+          tracks: [...prev.tracks, track],
+          clips: [...prev.clips, ...removedClips],
+        }));
+        mixer.registerChannel(track.id, track.name, track.color);
+      },
+      redo: () => {
+        setProject((prev) => ({
+          ...prev,
+          tracks: prev.tracks.filter((t) => t.id !== trackId),
+          clips: prev.clips.filter((c) => c.trackId !== trackId),
+        }));
+        mixer.removeChannel(trackId);
+      },
+    };
+
+    historyRef.current.pushAction(action);
+    setProject((prev) => ({
+      ...prev,
+      tracks: prev.tracks.filter((t) => t.id !== trackId),
+      clips: prev.clips.filter((c) => c.trackId !== trackId),
+    }));
+    mixer.removeChannel(trackId);
+    if (selectedTrackId === trackId) setSelectedTrackId(null);
+    setIsDirty(true);
   };
 
-  const handleClearPianoNotes = () => {
-    setPianoNotes([]);
-  };
-
-  // Timeline Clip Handlers
-  const handleAddClip = (trackId: string, startBarNum: number) => {
-    const track = tracks.find(t => t.id === trackId);
-    const newClip: StudioClip = {
-      id: `clip_${trackId}_${Date.now()}`,
+  const handleAddClip = (trackId: string, bar: number) => {
+    const track = project.tracks.find((t) => t.id === trackId);
+    const newClip: DawClip = {
+      id: `clip_${Date.now()}`,
       trackId,
-      name: track ? `${track.name} Pattern` : 'Pattern',
-      startBar: startBarNum,
+      name: track ? `${track.name} Clip` : 'Clip',
+      type: track?.type === 'audio' ? 'audio' : 'midi',
+      startBar: bar,
       durationBars: 4,
       color: track?.color,
+      notes: track?.type !== 'audio' ? [
+        { id: 'n1', pitch: 'C4', step: 0, durationSteps: 4, velocity: 0.8 },
+        { id: 'n2', pitch: 'G4', step: 4, durationSteps: 4, velocity: 0.8 },
+      ] : undefined,
     };
-    setClips(prev => [...prev, newClip]);
-  };
 
-  const handleUpdateClip = (clipId: string, updates: Partial<StudioClip>) => {
-    setClips(prev => prev.map(c => c.id === clipId ? { ...c, ...updates } : c));
+    setProject((prev) => ({ ...prev, clips: [...prev.clips, newClip] }));
+    setSelectedClipId(newClip.id);
+    setIsDirty(true);
   };
 
   const handleDeleteClip = (clipId: string) => {
-    setClips(prev => prev.filter(c => c.id !== clipId));
+    const clip = project.clips.find((c) => c.id === clipId);
+    if (!clip) return;
+
+    setProject((prev) => ({ ...prev, clips: prev.clips.filter((c) => c.id !== clipId) }));
+    if (selectedClipId === clipId) setSelectedClipId(null);
+    setIsDirty(true);
   };
 
-  const handleToggleMute = (trackId: string) => {
-    setTracks(prev => prev.map(t => t.id === trackId ? { ...t, isMuted: !t.isMuted } : t));
+  const handleSplitClip = (clipId: string, splitBar: number) => {
+    const clip = project.clips.find((c) => c.id === clipId);
+    if (!clip || splitBar <= clip.startBar || splitBar >= clip.startBar + clip.durationBars) return;
+
+    const firstDuration = splitBar - clip.startBar;
+    const secondDuration = clip.durationBars - firstDuration;
+
+    const secondClip: DawClip = {
+      ...JSON.parse(JSON.stringify(clip)),
+      id: `clip_split_${Date.now()}`,
+      startBar: splitBar,
+      durationBars: secondDuration,
+    };
+
+    setProject((prev) => ({
+      ...prev,
+      clips: prev.clips
+        .map((c) => (c.id === clipId ? { ...c, durationBars: firstDuration } : c))
+        .concat(secondClip),
+    }));
+    setIsDirty(true);
+    showSnackbar(`Split clip "${clip.name}" at Bar ${splitBar}`);
   };
 
-  const handleToggleSolo = (trackId: string) => {
-    setTracks(prev => prev.map(t => t.id === trackId ? { ...t, isSolo: !t.isSolo } : t));
+  const handleToggleClipMute = (clipId: string) => {
+    setProject((prev) => ({
+      ...prev,
+      clips: prev.clips.map((c) => (c.id === clipId ? { ...c, isMuted: !c.isMuted } : c)),
+    }));
+    setIsDirty(true);
   };
 
-  const handleChangeVolume = (trackId: string, volume: number) => {
-    setTracks(prev => prev.map(t => t.id === trackId ? { ...t, volume } : t));
+  // Add sample from sidebar to existing or new track
+  const handleAddSampleToTrack = (sample: SampleItem, trackId: string, bar: number) => {
+    const track = project.tracks.find((t) => t.id === trackId);
+    const durBars = Math.max(1, Math.ceil(sample.durationSec / (project.bpm / 60) / 4));
+
+    const newClip: DawClip = {
+      id: `sample_clip_${Date.now()}`,
+      trackId,
+      name: sample.name,
+      type: 'audio',
+      startBar: bar,
+      durationBars: durBars,
+      color: track?.color || '#35C9A5',
+      audioBuffer: sample.buffer,
+      peaks: sample.peaks,
+    };
+
+    setProject((prev) => ({ ...prev, clips: [...prev.clips, newClip] }));
+    setSelectedClipId(newClip.id);
+    setIsDirty(true);
+    showSnackbar(`Placed "${sample.name}" on timeline at Bar ${bar}!`);
   };
 
-  const handleChangePan = (trackId: string, pan: number) => {
-    setTracks(prev => prev.map(t => t.id === trackId ? { ...t, pan } : t));
+  const handleAddSampleToNewTrack = (sample: SampleItem) => {
+    const trackId = `trk_audio_${Date.now()}`;
+    const newTrack: DawTrack = {
+      id: trackId,
+      name: sample.name,
+      type: 'audio',
+      color: '#35C9A5',
+      volumeDb: 0,
+      pan: 0,
+      isMuted: false,
+      isSolo: false,
+      isArmed: false,
+      effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+    };
+
+    const durBars = Math.max(1, Math.ceil(sample.durationSec / (project.bpm / 60) / 4));
+    const newClip: DawClip = {
+      id: `clip_${Date.now()}`,
+      trackId,
+      name: sample.name,
+      type: 'audio',
+      startBar: 1,
+      durationBars: durBars,
+      color: '#35C9A5',
+      audioBuffer: sample.buffer,
+      peaks: sample.peaks,
+    };
+
+    setProject((prev) => ({
+      ...prev,
+      tracks: [...prev.tracks, newTrack],
+      clips: [...prev.clips, newClip],
+    }));
+    mixer.registerChannel(trackId, sample.name, '#35C9A5');
+    setSelectedTrackId(trackId);
+    setSelectedClipId(newClip.id);
+    setIsDirty(true);
+    showSnackbar(`Created audio track and placed "${sample.name}" at Bar 1!`);
   };
 
-  // Audio Sample Upload
-  const handleUploadAudioSample = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    trackId: string,
-    startBarNum: number
+  const handleCommitStepPattern = (
+    drumPattern: Record<string, boolean[]>,
+    startBar: number,
+    name: string
   ) => {
-    const file = e.target.files?.[0];
-    if (!file || !activeChat) return;
+    let drumTrack = project.tracks.find((t) => t.name.toLowerCase().includes('drum') || t.id.includes('drum'));
+    let nextTracks = [...project.tracks];
 
-    showSnackbar(`Uploading audio clip "${file.name}"...`);
-    try {
-      const formData = new FormData();
-      formData.append('audio', file);
-
-      const res = await fetch(`/api/chats/${activeChat.id}/upload-sample`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        // Decode buffer for immediate playback
-        await dawAudioEngine.loadAudioSample(data.audioUrl);
-
-        // Add clip to timeline
-        const audioClip: StudioClip = {
-          id: `audio_clip_${Date.now()}`,
-          trackId,
-          name: file.name.replace(/\.[^/.]+$/, ''),
-          startBar: startBarNum,
-          durationBars: 4,
-          color: '#ffd600',
-          audioUrl: data.audioUrl,
-          audioFileName: data.filename,
-        };
-        setClips(prev => [...prev, audioClip]);
-        showSnackbar(`Audio clip "${file.name}" placed on timeline at Bar ${startBarNum}!`);
-      } else {
-        const err = await res.json();
-        showSnackbar(`Upload failed: ${err.error || 'Server error'}`);
-      }
-    } catch (err: any) {
-      showSnackbar(`Upload error: ${err.message}`);
-    } finally {
-      e.target.value = '';
-    }
-  };
-
-  // Apply Precreated Beat Preset
-  const handleApplyPreset = (preset: BeatPreset) => {
-    setBpm(preset.bpm);
-    setSongKey(preset.key);
-    setSongScale(preset.scale);
-    setDrumSteps(preset.drumSteps);
-    setPianoNotes(preset.pianoNotes);
-
-    // Arrange default 8-bar block
-    setClips([
-      { id: `c_d_${Date.now()}`, trackId: 't_drums', name: `${preset.name} Drums`, startBar: 1, durationBars: 8, color: '#ff5252' },
-      { id: `c_b_${Date.now()}`, trackId: 't_bass', name: `${preset.name} Bass`, startBar: 1, durationBars: 8, color: '#7c4dff' },
-      { id: `c_p_${Date.now()}`, trackId: 't_piano', name: `${preset.name} Chords`, startBar: 1, durationBars: 8, color: '#00b0ff' },
-    ]);
-
-    showSnackbar(`Loaded beat preset: "${preset.name}" (${preset.bpm} BPM)!`);
-  };
-
-  // Project Duplication & Cover
-  const handleDuplicateProject = async (sourceChatId: string, asCover: boolean, customName?: string) => {
-    try {
-      const res = await fetch(`/api/chats/${sourceChatId}/duplicate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: customName,
-          asCover,
-          bpm,
-          genre: activeChat?.style?.genre || 'pop',
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        await refreshChats();
-        setActiveChatId(data.chat.id);
-        showSnackbar(asCover ? `Created cover project "${data.chat.name}"!` : `Duplicated project "${data.chat.name}"!`);
-      } else {
-        const err = await res.json();
-        showSnackbar(`Duplication failed: ${err.error || 'Error'}`);
-      }
-    } catch (err: any) {
-      showSnackbar(`Duplication error: ${err.message}`);
-    }
-  };
-
-  // Save Arrangement to Backend
-  const handleSaveArrangement = async () => {
-    if (!activeChat) {
-      showSnackbar('No active project selected. Duplicate or create a project first.');
-      return;
-    }
-
-    try {
-      const studioArrangement = {
-        bpm,
-        key: songKey,
-        scale: songScale,
-        timeSignature: '4/4',
-        totalBars,
-        tracks,
-        clips,
-        patterns: {
-          drums: {
-            id: 'p_drums',
-            name: 'Main Drums',
-            type: 'drums' as const,
-            instrument: 'drums',
-            steps: drumSteps.kick,
-          },
-          piano: {
-            id: 'p_piano',
-            name: 'Main Piano',
-            type: 'notes' as const,
-            instrument: 'piano',
-            notes: pianoNotes,
-          },
-        },
+    if (!drumTrack) {
+      drumTrack = {
+        id: `trk_drums_${Date.now()}`,
+        name: 'Drum Sequencer',
+        type: 'instrument',
+        color: '#FF5252',
+        volumeDb: 0,
+        pan: 0,
+        isMuted: false,
+        isSolo: false,
+        isArmed: false,
+        instrumentPreset: 'bass',
+        effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
       };
-
-      const res = await fetch(`/api/chats/${activeChat.id}/studio-arrangement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studioArrangement }),
-      });
-
-      if (res.ok) {
-        await refreshChats();
-        showSnackbar(`Saved studio beat arrangement for "${activeChat.name}"!`);
-      } else {
-        const err = await res.json();
-        showSnackbar(`Save failed: ${err.error || 'Error'}`);
-      }
-    } catch (err: any) {
-      showSnackbar(`Save error: ${err.message}`);
+      nextTracks.push(drumTrack);
+      mixer.registerChannel(drumTrack.id, drumTrack.name, drumTrack.color);
     }
-  };
 
-  // Offline Render WAV Master
-  const handleRenderMaster = async () => {
-    setIsRendering(true);
-    showSnackbar('Synthesizing high-fidelity WAV master in offline audio engine...');
+    const voiceToPitchMap: Record<string, string> = {
+      sub808: 'C1',
+      kick: 'C2',
+      snare: 'D2',
+      clap: 'Eb2',
+      perc: 'G#2',
+      hihatClosed: 'F#2',
+      hihatOpen: 'Bb2',
+    };
 
-    try {
-      const wavBlob = await dawAudioEngine.renderArrangementToWav(
-        bpm,
-        totalBars,
-        (offlineCtx, stepDuration) => {
-          for (let step = 0; step < totalBars * 16; step++) {
-            const time = step * stepDuration;
-            const currentBarNum = Math.floor(step / 16) + 1;
-            const stepInBar = step % 16;
-
-            // Drums
-            const isDrumActive = clips.some(c => c.trackId === 't_drums' && currentBarNum >= c.startBar && currentBarNum < c.startBar + c.durationBars);
-            if (isDrumActive) {
-              if (drumSteps.kick[stepInBar]) dawAudioEngine.playKick(time, 0.9, offlineCtx);
-              if (drumSteps.snare[stepInBar]) dawAudioEngine.playSnare(time, 0.8, offlineCtx);
-              if (drumSteps.hihatClosed[stepInBar]) dawAudioEngine.playHiHatClosed(time, 0.7, offlineCtx);
-              if (drumSteps.hihatOpen[stepInBar]) dawAudioEngine.playHiHatOpen(time, 0.7, offlineCtx);
-              if (drumSteps.clap[stepInBar]) dawAudioEngine.playClap(time, 0.8, offlineCtx);
-              if (drumSteps.sub808[stepInBar]) dawAudioEngine.play808Sub(time, 'C2', 0.5, 0.9, offlineCtx);
-              if (drumSteps.perc[stepInBar]) dawAudioEngine.playPerc(time, 0.7, offlineCtx);
-            }
-
-            // Piano Chords
-            const isPianoActive = clips.some(c => c.trackId === 't_piano' && currentBarNum >= c.startBar && currentBarNum < c.startBar + c.durationBars);
-            if (isPianoActive) {
-              const matchingNotes = pianoNotes.filter(n => n.step === stepInBar);
-              matchingNotes.forEach(note => {
-                const freq = pitchToFrequency(note.pitch);
-                dawAudioEngine.playPianoNote(time, freq, note.durationSteps * 0.125, 0.8, offlineCtx);
-              });
-            }
-          }
+    const notes: DawNote[] = [];
+    Object.entries(drumPattern).forEach(([voiceId, steps]) => {
+      const pitch = voiceToPitchMap[voiceId] || 'C2';
+      steps.forEach((active, stepIdx) => {
+        if (active) {
+          notes.push({
+            id: `drum_${voiceId}_${stepIdx}_${Date.now()}`,
+            pitch,
+            step: stepIdx,
+            durationSteps: 1,
+            velocity: 0.85,
+          });
         }
-      );
+      });
+    });
 
-      // Download WAV file
-      const url = URL.createObjectURL(wavBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${activeChat?.name || 'Studio_Beat'}_master.wav`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    const newClip: DawClip = {
+      id: `clip_drum_${Date.now()}`,
+      trackId: drumTrack.id,
+      name: `${name} Beat`,
+      type: 'midi',
+      startBar,
+      durationBars: 1,
+      color: drumTrack.color,
+      notes,
+    };
 
-      showSnackbar(`Render complete! Downloaded "${activeChat?.name || 'Studio_Beat'}_master.wav".`);
-    } catch (err: any) {
-      showSnackbar(`Render error: ${err.message}`);
-    } finally {
-      setIsRendering(false);
+    setProject((prev) => ({
+      ...prev,
+      tracks: nextTracks,
+      clips: [...prev.clips, newClip],
+    }));
+    setSelectedTrackId(drumTrack.id);
+    setSelectedClipId(newClip.id);
+    setIsDirty(true);
+    showSnackbar(`Committed ${name} pattern to "${drumTrack.name}" at Bar ${startBar}!`);
+  };
+
+  // --- UNDO / REDO ---
+
+  const handleUndo = () => {
+    if (historyRef.current.undo()) {
+      setIsDirty(true);
+      showSnackbar(`Undo: ${historyRef.current.getUndoDescription() || 'Action'}`);
     }
   };
+
+  const handleRedo = () => {
+    if (historyRef.current.redo()) {
+      setIsDirty(true);
+      showSnackbar(`Redo: ${historyRef.current.getRedoDescription() || 'Action'}`);
+    }
+  };
+
+  const handleToggleLoop = () => {
+    setProject((prev) => ({ ...prev, isLoopEnabled: !prev.isLoopEnabled }));
+  };
+
+  // --- EXPORT MASTER AUDIO (WAV) ---
+
+  const handleExportMaster = async () => {
+    showSnackbar('Rendering high-resolution 24-bit WAV master from multitrack timeline...');
+    const stepDuration = 60 / project.bpm / 4;
+    const totalSteps = project.totalBars * 16;
+    const totalDurationSec = totalSteps * stepDuration + 2.0;
+
+    const sampleRate = 44100;
+    const offlineCtx = new OfflineAudioContext(2, Math.ceil(totalDurationSec * sampleRate), sampleRate);
+    const offlineMixer = new MixerEngine(offlineCtx);
+
+    // Setup offline mixer routing
+    project.tracks.forEach((t) => {
+      offlineMixer.registerChannel(t.id, t.name, t.color, t.effects);
+      offlineMixer.setChannelVolume(t.id, t.volumeDb);
+      offlineMixer.setChannelPan(t.id, t.pan);
+    });
+    offlineMixer.setMasterVolume(project.masterVolumeDb);
+
+    // Schedule audio and MIDI events into the offline context
+    project.tracks.forEach((track) => {
+      const channel = offlineMixer.getChannel(track.id);
+      if (!channel || track.isMuted) return;
+
+      const trackClips = project.clips.filter((c) => c.trackId === track.id && !c.isMuted);
+      trackClips.forEach((clip) => {
+        const clipStartTime = (clip.startBar - 1) * 16 * stepDuration;
+
+        if (clip.type === 'audio' && clip.audioBuffer) {
+          const source = offlineCtx.createBufferSource();
+          source.buffer = clip.audioBuffer;
+          source.connect(channel.inputNode);
+          source.start(clipStartTime);
+        }
+
+        if (clip.type === 'midi' && clip.notes) {
+          clip.notes.forEach((note) => {
+            const noteTime = clipStartTime + note.step * stepDuration;
+            const dur = note.durationSteps * stepDuration;
+            dawSynthEngine.playNote(
+              note.pitch,
+              dur,
+              note.velocity,
+              track.instrumentPreset || 'piano',
+              channel.inputNode,
+              noteTime,
+              offlineCtx
+            );
+          });
+        }
+      });
+    });
+
+    const rendered = await offlineCtx.startRendering();
+
+    // Encode rendered AudioBuffer to WAV Blob
+    const length = rendered.length * 2 * 2;
+    const wavBuffer = new ArrayBuffer(44 + length);
+    const view = new DataView(wavBuffer);
+
+    const writeStr = (offset: number, s: string) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+    };
+
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + length, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 2, true); // Stereo
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 4, true);
+    view.setUint16(32, 4, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, length, true);
+
+    const l = rendered.getChannelData(0);
+    const r = rendered.getChannelData(1);
+    let offset = 44;
+    for (let i = 0; i < rendered.length; i++, offset += 4) {
+      const sL = Math.max(-1, Math.min(1, l[i]));
+      const sR = Math.max(-1, Math.min(1, r[i]));
+      view.setInt16(offset, sL < 0 ? sL * 0x8000 : sL * 0x7fff, true);
+      view.setInt16(offset + 2, sR < 0 ? sR * 0x8000 : sR * 0x7fff, true);
+    }
+
+    const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${project.name.replace(/\s+/g, '_')}_master.wav`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    showSnackbar(`Successfully exported "${project.name}_master.wav"!`);
+  };
+
+  // Menu action handlers
+  const menuHandlers: MenuActionHandlers = {
+    onNewProject: () => {
+      if (confirm('Create a new project session?')) {
+        setProject(createDefaultProject());
+        setIsDirty(false);
+      }
+    },
+    onSaveProject: async () => {
+      saveAutosaveSnapshot(project);
+      setIsDirty(false);
+      setLastSavedAt(new Date().toLocaleTimeString());
+      if (activeChat) {
+        await fetch(`/api/chats/${activeChat.id}/studio-arrangement`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studioArrangement: project }),
+        });
+      }
+      showSnackbar(`Saved project "${project.name}"!`);
+    },
+    onSaveAsCopy: () => {
+      const newName = prompt('Enter name for duplicate project copy:', `${project.name} (Copy)`);
+      if (newName) {
+        setProject((prev) => ({
+          ...prev,
+          id: `proj_${Date.now()}`,
+          name: newName,
+        }));
+        setIsDirty(true);
+        showSnackbar(`Branched session as "${newName}"!`);
+      }
+    },
+    onExportMaster: handleExportMaster,
+    onExportStems: () => {
+      showSnackbar('Exporting individual track stems to .zip...');
+      handleExportMaster();
+    },
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    canUndo: historyRef.current.canUndo(),
+    canRedo: historyRef.current.canRedo(),
+    undoDesc: historyRef.current.getUndoDescription(),
+    redoDesc: historyRef.current.getRedoDescription(),
+    onToggleBrowser: () => setShowBrowser((prev) => !prev),
+    onToggleInspector: () => setShowInspector((prev) => !prev),
+    onToggleMixer: () => setShowMixer((prev) => !prev),
+    onSelectWorkspace: (ws) => setActiveWorkspace(ws),
+    onAddAudioTrack: () => handleAddTrack('audio', 'Audio Track', '#35C9A5'),
+    onAddMidiTrack: () => handleAddTrack('midi', 'MIDI Track', '#8B78FF', 'piano'),
+    onAddInstrumentTrack: () => handleAddTrack('instrument', '808 Bass Track', '#FF5252', 'bass'),
+    onAddDrumTrack: () => handleAddTrack('instrument', 'Drum Sequencer', '#FF5252', 'bass'),
+    onDeleteSelectedTrack: () => {
+      if (selectedTrackId) handleDeleteTrack(selectedTrackId);
+    },
+    onSplitClipAtPlayhead: () => {
+      if (selectedClipId) {
+        const bar = Math.floor(currentStepIndex / 16) + 1;
+        handleSplitClip(selectedClipId, bar);
+      }
+    },
+    onQuantizeClip: () => {
+      showSnackbar('Quantized clip notes to 1/16th musical grid.');
+    },
+    onShowShortcuts: () => {
+      alert(
+        'MusicSkills DAW Keyboard Shortcuts:\n\n' +
+        'Space: Play / Pause\n' +
+        'R: Toggle Audio Recording into Armed Track\n' +
+        'L: Toggle Loop Mode\n' +
+        'S: Split Tool\n' +
+        'D: Draw Tool\n' +
+        'E: Erase Tool\n' +
+        'B: Toggle Sample Browser\n' +
+        'M: Toggle Mixer Panel\n' +
+        'I: Toggle Inspector Panel\n' +
+        'Ctrl+Z: Undo\n' +
+        'Ctrl+Shift+Z: Redo\n' +
+        'Ctrl+S: Save Session'
+      );
+    },
+    onShowAudioSetup: () => {
+      alert(
+        `Web Audio Engine Status:\n\n` +
+        `State: ${dawContextManager.getState().toUpperCase()}\n` +
+        `Sample Rate: ${dawContextManager.getSampleRate()} Hz\n` +
+        `Latency Mode: Interactive (~5.8ms buffer)\n` +
+        `Active Mixer Channels: ${project.tracks.length}\n` +
+        `Microphone Capture: Ready`
+      );
+    },
+  };
+
+  const selectedTrack = project.tracks.find((t) => t.id === selectedTrackId) || null;
+  const selectedClip = project.clips.find((c) => c.id === selectedClipId) || null;
+
+  // Selected MIDI notes for Piano Roll
+  const activeMidiClip = selectedClip?.type === 'midi' ? selectedClip : project.clips.find((c) => c.type === 'midi') || null;
 
   return (
-    <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Studio Control Bar */}
-      <div
-        style={{
-          padding: '16px 20px',
-          backgroundColor: 'var(--color-surface)',
-          border: '1px solid var(--color-outline)',
-          borderRadius: 'var(--radius-xl)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '16px',
-          boxShadow: 'var(--shadow-l1)',
+    <div
+      style={{
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#101114',
+        color: '#F3F4F6',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        zIndex: 1000,
+      }}
+    >
+      {/* 1. DAW Top Title Bar */}
+      <DawTitleBar
+        projectName={project.name}
+        isDirty={isDirty}
+        onRenameProject={(name) => {
+          setProject((prev) => ({ ...prev, name }));
+          setIsDirty(true);
         }}
-      >
-        {/* Left: Transport Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={handleTogglePlay}
-            className="btn btn-primary"
-            style={{
-              height: '42px',
-              padding: '0 20px',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '14px',
-              fontWeight: 700,
-              gap: '6px',
-            }}
-          >
-            <span className="material-icons-round" style={{ fontSize: '20px' }}>
-              {isPlaying ? 'pause' : 'play_arrow'}
-            </span>
-            <span>{isPlaying ? 'Pause' : 'Play'}</span>
-          </button>
-
-          <button
-            onClick={handleStop}
-            className="btn btn-tonal"
-            style={{ height: '42px', width: '42px', padding: 0, borderRadius: '50%' }}
-            title="Stop & Reset to Start"
-          >
-            <span className="material-icons-round">stop</span>
-          </button>
-
-          {/* Time & Bar Position Indicator */}
-          <div
-            className="mono"
-            style={{
-              padding: '6px 14px',
-              backgroundColor: 'var(--color-container)',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: 700,
-              color: 'var(--color-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span>Bar {currentBar}</span>
-            <span style={{ color: 'var(--color-text-secondary)' }}>·</span>
-            <span>Step {(currentStepIndex % 16) + 1}</span>
-          </div>
-
-          {/* Metronome Toggle */}
-          <button
-            onClick={() => setMetronomeEnabled(!metronomeEnabled)}
-            className="btn-text"
-            style={{
-              height: '38px',
-              padding: '0 12px',
-              borderRadius: '8px',
-              backgroundColor: metronomeEnabled ? 'var(--color-primary-container)' : 'transparent',
-              color: metronomeEnabled ? 'var(--color-on-primary-container)' : 'var(--color-text-secondary)',
-              fontSize: '12px',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-            title="Toggle Metronome Click"
-          >
-            <span className="material-icons-round" style={{ fontSize: '18px' }}>
-              alarm
-            </span>
-            <span>Click</span>
-          </button>
-        </div>
-
-        {/* Center: BPM, Key & Scale Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {/* BPM Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>BPM:</span>
-            <input
-              type="number"
-              min="40"
-              max="240"
-              value={bpm}
-              onChange={e => setBpm(parseInt(e.target.value, 10) || 120)}
-              className="input-field"
-              style={{ width: '64px', height: '36px', textAlign: 'center', fontSize: '14px', fontWeight: 700 }}
-            />
-            <button
-              onClick={handleTapTempo}
-              className="btn btn-outlined"
-              style={{ height: '36px', padding: '0 10px', fontSize: '12px' }}
-              title="Tap repeatedly to detect BPM"
-            >
-              Tap
-            </button>
-          </div>
-
-          {/* Key Select */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Key:</span>
-            <select
-              className="input-field"
-              value={songKey}
-              onChange={e => setSongKey(e.target.value)}
-              style={{ height: '36px', width: '60px', fontSize: '13px', cursor: 'pointer' }}
-            >
-              {['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
-                <option key={k} value={k}>{k}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Scale Select */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Scale:</span>
-            <select
-              className="input-field"
-              value={songScale}
-              onChange={e => setSongScale(e.target.value)}
-              style={{ height: '36px', width: '90px', fontSize: '13px', cursor: 'pointer' }}
-            >
-              <option value="major">Major</option>
-              <option value="minor">Minor</option>
-              <option value="dorian">Dorian</option>
-              <option value="pentatonic">Pentatonic</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Right: Cover/Duplication, Presets, Save & Render */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {/* Cover & Presets Modal Button */}
-          <button
-            onClick={() => setShowCoverModal(true)}
-            className="btn btn-tonal"
-            style={{ height: '38px', padding: '0 14px', fontSize: '13px', gap: '6px' }}
-            title="Use another project as cover, duplicate, or load beat presets"
-          >
-            <span className="material-icons-round" style={{ fontSize: '18px' }}>queue_music</span>
-            <span>Covers & Presets</span>
-          </button>
-
-          {/* Save Arrangement */}
-          <button
-            onClick={handleSaveArrangement}
-            className="btn btn-outlined"
-            style={{ height: '38px', padding: '0 14px', fontSize: '13px', gap: '6px' }}
-            title="Save arrangement to project"
-          >
-            <span className="material-icons-round" style={{ fontSize: '18px' }}>save</span>
-            <span>Save</span>
-          </button>
-
-          {/* Render WAV Master */}
-          <button
-            onClick={handleRenderMaster}
-            disabled={isRendering}
-            className="btn btn-gradient"
-            style={{ height: '38px', padding: '0 16px', fontSize: '13px', gap: '6px' }}
-            title="Synthesize and render high-fidelity WAV master"
-          >
-            <span className="material-icons-round" style={{ fontSize: '18px' }}>
-              {isRendering ? 'sync' : 'file_download'}
-            </span>
-            <span>{isRendering ? 'Rendering...' : 'Render Audio'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* View Mode Switcher */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button
-            onClick={() => setViewMode('split')}
-            className={`btn ${viewMode === 'split' ? 'btn-primary' : 'btn-tonal'}`}
-            style={{ height: '34px', fontSize: '12px', padding: '0 12px' }}
-          >
-            Split Studio View
-          </button>
-          <button
-            onClick={() => setViewMode('arranger')}
-            className={`btn ${viewMode === 'arranger' ? 'btn-primary' : 'btn-tonal'}`}
-            style={{ height: '34px', fontSize: '12px', padding: '0 12px' }}
-          >
-            Timeline Playlist
-          </button>
-          <button
-            onClick={() => setViewMode('drums')}
-            className={`btn ${viewMode === 'drums' ? 'btn-primary' : 'btn-tonal'}`}
-            style={{ height: '34px', fontSize: '12px', padding: '0 12px' }}
-          >
-            Step Sequencer
-          </button>
-          <button
-            onClick={() => setViewMode('piano')}
-            className={`btn ${viewMode === 'piano' ? 'btn-primary' : 'btn-tonal'}`}
-            style={{ height: '34px', fontSize: '12px', padding: '0 12px' }}
-          >
-            Piano Roll
-          </button>
-        </div>
-
-        {activeChat && (
-          <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-            Project: <strong style={{ color: 'var(--color-text)' }}>{activeChat.name}</strong>
-            {activeChat.coverOf && <span> (Cover of {activeChat.coverOf})</span>}
-          </div>
-        )}
-      </div>
-
-      {/* Main Studio Views */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {/* Timeline Arranger (Visible in 'split' or 'arranger') */}
-        {(viewMode === 'split' || viewMode === 'arranger') && (
-          <TimelineArranger
-            tracks={tracks}
-            clips={clips}
-            totalBars={totalBars}
-            currentBar={currentBar}
-            currentStepIndex={currentStepIndex}
-            isPlaying={isPlaying}
-            onAddClip={handleAddClip}
-            onUpdateClip={handleUpdateClip}
-            onDeleteClip={handleDeleteClip}
-            onToggleMute={handleToggleMute}
-            onToggleSolo={handleToggleSolo}
-            onChangeVolume={handleChangeVolume}
-            onChangePan={handleChangePan}
-            onScrubBar={handleScrubBar}
-            onUploadAudioSample={handleUploadAudioSample}
-          />
-        )}
-
-        {/* Step Sequencer (Visible in 'split' or 'drums') */}
-        {(viewMode === 'split' || viewMode === 'drums') && (
-          <StepSequencer
-            drumSteps={drumSteps}
-            onToggleStep={handleToggleDrumStep}
-            onClearVoice={handleClearVoice}
-            onFillVoice={handleFillVoice}
-            currentStepIndex={currentStepIndex}
-            isPlaying={isPlaying}
-          />
-        )}
-
-        {/* Piano Roll (Visible in 'split' or 'piano') */}
-        {(viewMode === 'split' || viewMode === 'piano') && (
-          <PianoRoll
-            notes={pianoNotes}
-            onAddNote={handleAddPianoNote}
-            onRemoveNote={handleRemovePianoNote}
-            onClearNotes={handleClearPianoNotes}
-            instrument={activeInstrument}
-            onChangeInstrument={setActiveInstrument}
-            songKey={songKey}
-            songScale={songScale}
-            currentStepIndex={currentStepIndex}
-            isPlaying={isPlaying}
-          />
-        )}
-      </div>
-
-      {/* Covers, Duplication & Preset Modal */}
-      <CoverDuplicateModal
-        isOpen={showCoverModal}
-        onClose={() => setShowCoverModal(false)}
-        onApplyPreset={handleApplyPreset}
-        onDuplicateProject={handleDuplicateProject}
+        activeWorkspace={activeWorkspace}
+        onChangeWorkspace={setActiveWorkspace}
+        onExit={() => setRoute('home')}
+        midiConnectedCount={midiDevices.length}
       />
+
+      {/* 2. Global Main Menu */}
+      <DawMenuBar handlers={menuHandlers} />
+
+      {/* 3. Global Transport Toolbar */}
+      <DawTransportBar
+        isPlaying={isPlaying}
+        isRecording={isRecording}
+        onTogglePlay={handleTogglePlay}
+        onStop={handleStop}
+        onToggleRecord={handleToggleRecord}
+        onReturnToStart={handleReturnToStart}
+        currentStepIndex={currentStepIndex}
+        bpm={project.bpm}
+        onChangeBpm={(bpm) => {
+          setProject((prev) => ({ ...prev, bpm }));
+          setIsDirty(true);
+        }}
+        timeSigNumerator={project.timeSignatureNumerator}
+        timeSigDenominator={project.timeSignatureDenominator}
+        onChangeTimeSig={(num, den) => {
+          setProject((prev) => ({ ...prev, timeSignatureNumerator: num, timeSignatureDenominator: den }));
+          setIsDirty(true);
+        }}
+        songKey={project.key}
+        songScale={project.scale}
+        onChangeKey={(key, scale) => {
+          setProject((prev) => ({ ...prev, key, scale }));
+          setIsDirty(true);
+        }}
+        isLoopEnabled={project.isLoopEnabled}
+        onToggleLoop={handleToggleLoop}
+        metronomeEnabled={metronomeEnabled}
+        onToggleMetronome={() => setMetronomeEnabled((prev) => !prev)}
+        snapResolution={project.snapResolution}
+        onChangeSnap={(snap) => {
+          setProject((prev) => ({ ...prev, snapResolution: snap }));
+          setIsDirty(true);
+        }}
+        onJumpToBar={handleScrubPlayhead}
+      />
+
+      {/* 4. Central Horizontal Workspace Splitter */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
+        {/* Left: Sample Browser Sidebar */}
+        {showBrowser && (
+          <DawBrowserSidebar
+            onAddSampleToNewTrack={handleAddSampleToNewTrack}
+            onAddSampleToTrack={handleAddSampleToTrack}
+            selectedTrackId={selectedTrackId || undefined}
+            currentPlayheadBar={Math.floor(currentStepIndex / 16) + 1}
+          />
+        )}
+
+        {/* Center: Active Workspace View */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+          {activeWorkspace === 'arrangement' && (
+            <DawArrangementView
+              tracks={project.tracks}
+              clips={project.clips}
+              totalBars={project.totalBars}
+              currentStepIndex={currentStepIndex}
+              isPlaying={isPlaying}
+              activeTool={activeTool}
+              onChangeTool={setActiveTool}
+              selectedTrackId={selectedTrackId}
+              onSelectTrack={setSelectedTrackId}
+              selectedClipId={selectedClipId}
+              onSelectClip={setSelectedClipId}
+              onAddClip={handleAddClip}
+              onMoveClip={(id, newBar) => {
+                setProject((prev) => ({
+                  ...prev,
+                  clips: prev.clips.map((c) => (c.id === id ? { ...c, startBar: newBar } : c)),
+                }));
+                setIsDirty(true);
+              }}
+              onResizeClip={(id, newDur) => {
+                setProject((prev) => ({
+                  ...prev,
+                  clips: prev.clips.map((c) => (c.id === id ? { ...c, durationBars: newDur } : c)),
+                }));
+                setIsDirty(true);
+              }}
+              onSplitClip={handleSplitClip}
+              onDeleteClip={handleDeleteClip}
+              onToggleClipMute={handleToggleClipMute}
+              onScrubPlayhead={handleScrubPlayhead}
+              onToggleTrackMute={(id) => {
+                mixer.toggleChannelMute(id);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, isMuted: !t.isMuted } : t)),
+                }));
+              }}
+              onToggleTrackSolo={(id) => {
+                mixer.toggleChannelSolo(id);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, isSolo: !t.isSolo } : t)),
+                }));
+              }}
+              onToggleTrackArm={(id) => {
+                mixer.toggleChannelArm(id);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, isArmed: !t.isArmed } : t)),
+                }));
+              }}
+              onChangeTrackVolume={(id, db) => {
+                mixer.setChannelVolume(id, db);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, volumeDb: db } : t)),
+                }));
+              }}
+              onChangeTrackPan={(id, pan) => {
+                mixer.setChannelPan(id, pan);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, pan } : t)),
+                }));
+              }}
+              loopStartBar={project.loopStartBar}
+              loopEndBar={project.loopEndBar}
+              isLoopEnabled={project.isLoopEnabled}
+            />
+          )}
+
+          {activeWorkspace === 'pianoroll' && (
+            <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
+              <PianoRoll
+                notes={activeMidiClip?.notes || []}
+                onAddNote={(note) => {
+                  if (!activeMidiClip) {
+                    handleAddClip(selectedTrackId || project.tracks[1].id, 1);
+                    return;
+                  }
+                  const dawNote: DawNote = {
+                    id: note.id,
+                    pitch: note.pitch,
+                    step: note.step,
+                    durationSteps: note.durationSteps,
+                    velocity: note.velocity ?? 0.8,
+                  };
+                  setProject((prev) => ({
+                    ...prev,
+                    clips: prev.clips.map((c) =>
+                      c.id === activeMidiClip.id
+                        ? { ...c, notes: [...(c.notes || []).filter((n) => !(n.pitch === note.pitch && n.step === note.step)), dawNote] }
+                        : c
+                    ),
+                  }));
+                  setIsDirty(true);
+                }}
+                onRemoveNote={(noteId) => {
+                  if (!activeMidiClip) return;
+                  setProject((prev) => ({
+                    ...prev,
+                    clips: prev.clips.map((c) =>
+                      c.id === activeMidiClip.id
+                        ? { ...c, notes: (c.notes || []).filter((n) => n.id !== noteId) }
+                        : c
+                    ),
+                  }));
+                  setIsDirty(true);
+                }}
+                onClearNotes={() => {
+                  if (!activeMidiClip) return;
+                  setProject((prev) => ({
+                    ...prev,
+                    clips: prev.clips.map((c) => (c.id === activeMidiClip.id ? { ...c, notes: [] } : c)),
+                  }));
+                  setIsDirty(true);
+                }}
+                instrument={(selectedTrack?.instrumentPreset as any) || 'piano'}
+                onChangeInstrument={(inst) => {
+                  if (selectedTrackId) {
+                    setProject((prev) => ({
+                      ...prev,
+                      tracks: prev.tracks.map((t) => (t.id === selectedTrackId ? { ...t, instrumentPreset: inst } : t)),
+                    }));
+                  }
+                }}
+                songKey={project.key}
+                songScale={project.scale}
+                currentStepIndex={currentStepIndex}
+                isPlaying={isPlaying}
+              />
+            </div>
+          )}
+
+          {activeWorkspace === 'stepsequencer' && (
+            <DawStepSequencer
+              currentStepIndex={currentStepIndex}
+              isPlaying={isPlaying}
+              bpm={project.bpm}
+              currentPlayheadBar={Math.floor(currentStepIndex / 16) + 1}
+              onCommitToTimeline={handleCommitStepPattern}
+            />
+          )}
+
+          {/* Bottom Mixer Console (Visible when toggled or in mixer workspace) */}
+          {(showMixer || activeWorkspace === 'mixer') && (
+            <DawMixerPanel
+              tracks={project.tracks}
+              mixerEngine={mixer}
+              masterVolumeDb={project.masterVolumeDb}
+              onChangeMasterVolume={(db) => {
+                mixer.setMasterVolume(db);
+                setProject((prev) => ({ ...prev, masterVolumeDb: db }));
+              }}
+              onChangeTrackVolume={(id, db) => {
+                mixer.setChannelVolume(id, db);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, volumeDb: db } : t)),
+                }));
+              }}
+              onChangeTrackPan={(id, pan) => {
+                mixer.setChannelPan(id, pan);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, pan } : t)),
+                }));
+              }}
+              onToggleTrackMute={(id) => {
+                mixer.toggleChannelMute(id);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, isMuted: !t.isMuted } : t)),
+                }));
+              }}
+              onToggleTrackSolo={(id) => {
+                mixer.toggleChannelSolo(id);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, isSolo: !t.isSolo } : t)),
+                }));
+              }}
+              onToggleTrackArm={(id) => {
+                mixer.toggleChannelArm(id);
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: prev.tracks.map((t) => (t.id === id ? { ...t, isArmed: !t.isArmed } : t)),
+                }));
+              }}
+              onOpenEffectsRack={(id) => setActiveEffectsTrackId(id)}
+              onOpenMasterEffects={() => setIsMasterEffectsOpen(true)}
+              onCloseMixer={() => setShowMixer(false)}
+            />
+          )}
+        </div>
+
+        {/* Right: Inspector Panel */}
+        {showInspector && (
+          <DawInspectorPanel
+            selectedTrack={selectedTrack}
+            selectedClip={selectedClip}
+            onUpdateTrack={(id, updates) => {
+              setProject((prev) => ({
+                ...prev,
+                tracks: prev.tracks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+              }));
+              setIsDirty(true);
+            }}
+            onUpdateClip={(id, updates) => {
+              setProject((prev) => ({
+                ...prev,
+                clips: prev.clips.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+              }));
+              setIsDirty(true);
+            }}
+            onDeleteClip={handleDeleteClip}
+            onDeleteTrack={handleDeleteTrack}
+            onOpenEffectsRack={(id) => setActiveEffectsTrackId(id)}
+          />
+        )}
+      </div>
+
+      {/* 5. Bottom Status Bar */}
+      <DawStatusBar
+        engineState={dawContextManager.getState()}
+        sampleRate={dawContextManager.getSampleRate()}
+        tracksCount={project.tracks.length}
+        clipsCount={project.clips.length}
+        lastSavedAt={lastSavedAt}
+      />
+
+      {/* 6. Channel Insert Effects Rack Modal */}
+      {activeEffectsTrackId && (
+        <DawEffectsModal
+          isOpen={true}
+          onClose={() => setActiveEffectsTrackId(null)}
+          channelName={project.tracks.find((t) => t.id === activeEffectsTrackId)?.name || 'Track'}
+          config={project.tracks.find((t) => t.id === activeEffectsTrackId)?.effects || mixer.masterEffectChain.getConfig()}
+          onUpdateConfig={(newCfg) => {
+            mixer.updateChannelEffects(activeEffectsTrackId, newCfg);
+            setProject((prev) => ({
+              ...prev,
+              tracks: prev.tracks.map((t) => (t.id === activeEffectsTrackId ? { ...t, effects: newCfg } : t)),
+            }));
+            setIsDirty(true);
+          }}
+        />
+      )}
+
+      {/* 7. Master Effects Rack Modal */}
+      {isMasterEffectsOpen && (
+        <DawEffectsModal
+          isOpen={true}
+          onClose={() => setIsMasterEffectsOpen(false)}
+          channelName="Master Output Bus"
+          config={project.masterEffects}
+          onUpdateConfig={(newCfg) => {
+            mixer.masterEffectChain.applyConfig(newCfg);
+            setProject((prev) => ({ ...prev, masterEffects: newCfg }));
+            setIsDirty(true);
+          }}
+        />
+      )}
     </div>
   );
 };

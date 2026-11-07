@@ -377,3 +377,4 @@ export const CoverDuplicateModal: React.FC<CoverDuplicateModalProps> = ({
     </div>
   );
 };
+
