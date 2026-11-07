@@ -141,13 +141,14 @@ export const IteratePage: React.FC = () => {
 
         // Auto-play the new version
         const newV = data.version;
+        const mp3File = newV.mp3File || (newV.midiFile ? newV.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat.folderName}_${newV.version}.mp3`);
         playTrack({
           chatId: activeChat.id,
           songName: activeChat.name,
           version: newV.version,
-          mp3Url: `/api/audio/${activeChat.id}/${newV.mp3File}`,
-          midiUrl: `/api/audio/${activeChat.id}/${newV.midiFile}`,
-          durationSec: newV.durationSec,
+          mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
+          midiUrl: newV.midiFile ? `/api/audio/${activeChat.id}/${newV.midiFile}` : '',
+          durationSec: newV.durationSec || 180,
           lyrics: activeChat.lyrics,
           bpm: newV.bpm,
         });
@@ -488,13 +489,14 @@ export const IteratePage: React.FC = () => {
                     onClick={() => {
                       setActiveSlot('A');
                       if (versionA) {
+                        const mp3File = versionA.mp3File || (versionA.midiFile ? versionA.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat.folderName}_${versionA.version}.mp3`);
                         playTrack({
                           chatId: activeChat.id,
                           songName: activeChat.name,
                           version: versionA.version,
-                          mp3Url: `/api/audio/${activeChat.id}/${versionA.mp3File}`,
-                          midiUrl: `/api/audio/${activeChat.id}/${versionA.midiFile}`,
-                          durationSec: versionA.durationSec,
+                          mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
+                          midiUrl: versionA.midiFile ? `/api/audio/${activeChat.id}/${versionA.midiFile}` : '',
+                          durationSec: versionA.durationSec || 180,
                           lyrics: activeChat.lyrics,
                           bpm: versionA.bpm,
                         });
@@ -571,13 +573,14 @@ export const IteratePage: React.FC = () => {
                     onClick={() => {
                       setActiveSlot('B');
                       if (versionB) {
+                        const mp3File = versionB.mp3File || (versionB.midiFile ? versionB.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat.folderName}_${versionB.version}.mp3`);
                         playTrack({
                           chatId: activeChat.id,
                           songName: activeChat.name,
                           version: versionB.version,
-                          mp3Url: `/api/audio/${activeChat.id}/${versionB.mp3File}`,
-                          midiUrl: `/api/audio/${activeChat.id}/${versionB.midiFile}`,
-                          durationSec: versionB.durationSec,
+                          mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
+                          midiUrl: versionB.midiFile ? `/api/audio/${activeChat.id}/${versionB.midiFile}` : '',
+                          durationSec: versionB.durationSec || 180,
                           lyrics: activeChat.lyrics,
                           bpm: versionB.bpm,
                         });
@@ -710,18 +713,19 @@ export const IteratePage: React.FC = () => {
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
-                      onClick={() =>
+                      onClick={() => {
+                        const mp3File = ver.mp3File || (ver.midiFile ? ver.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat.folderName}_${ver.version}.mp3`);
                         playTrack({
                           chatId: activeChat.id,
                           songName: activeChat.name,
                           version: ver.version,
-                          mp3Url: `/api/audio/${activeChat.id}/${ver.mp3File}`,
-                          midiUrl: `/api/audio/${activeChat.id}/${ver.midiFile}`,
-                          durationSec: ver.durationSec,
+                          mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
+                          midiUrl: ver.midiFile ? `/api/audio/${activeChat.id}/${ver.midiFile}` : '',
+                          durationSec: ver.durationSec || 180,
                           lyrics: activeChat.lyrics,
                           bpm: ver.bpm,
-                        })
-                      }
+                        });
+                      }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',

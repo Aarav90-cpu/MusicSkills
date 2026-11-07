@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { ChatSession, ActivityEvent, PlayerTrack } from '../types';
+import { webAudioPlayer } from '../utils/webAudioPlayer';
 
 export type AppRoute = 'welcome' | 'setup' | 'home' | 'chat' | 'vocals' | 'iterate' | 'settings' | 'lyrics' | 'code' | 'stats' | 'video';
 
@@ -183,61 +184,162 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchChat();
   }, [activeChatId]);
 
+  // In-Browser Web Audio Synthesizer Fallback
+  const fallbackToWebAudio = (track: PlayerTrack) => {
+    showSnackbar(`Playing synthesized accompaniment via Web Audio (${track.bpm || 120} BPM)`);
+    setIsPlaying(true);
+    setDuration(track.durationSec || 180);
+    webAudioPlayer.playHarmonicSequence(track.bpm || 120, 'C', track.durationSec || 180, (sec) => {
+      setCurrentTime(sec);
+    });
+  };
+
   // Audio element listener setup
   useEffect(() => {
     const audio = new Audio();
+    audio.preload = 'auto';
     audioRef.current = audio;
 
     audio.ontimeupdate = () => {
-      setCurrentTime(audio.currentTime);
+      if (!webAudioPlayer.isRunning()) {
+        setCurrentTime(audio.currentTime);
+      }
     };
     audio.onloadedmetadata = () => {
-      setDuration(audio.duration || 0);
+      if (audio.duration && !isNaN(audio.duration) && audio.duration > 0) {
+        setDuration(audio.duration);
+      }
+    };
+    audio.onplay = () => {
+      setIsPlaying(true);
+    };
+    audio.onpause = () => {
+      if (!webAudioPlayer.isRunning()) {
+        setIsPlaying(false);
+      }
     };
     audio.onended = () => {
       setIsPlaying(false);
       setCurrentTime(0);
     };
+    audio.onerror = (e) => {
+      console.warn('HTML Audio Element error, activating Web Audio fallback:', e, audio.error);
+      if (currentTrack) {
+        fallbackToWebAudio(currentTrack);
+      }
+    };
 
     return () => {
       audio.pause();
       audio.src = '';
+      webAudioPlayer.stop();
     };
   }, []);
 
   const playTrack = (track: PlayerTrack) => {
-    setCurrentTrack(track);
+    // 1. Sanitize mp3Url to ensure it's never empty or ending with slash
+    let safeMp3Url = track.mp3Url;
+    if (!safeMp3Url || safeMp3Url.endsWith('/') || safeMp3Url.endsWith('/undefined') || safeMp3Url.endsWith('/null')) {
+      const cleanName = `${(track.songName || 'song').toLowerCase().replace(/[^a-z0-9]+/g, '-')}_master.mp3`;
+      safeMp3Url = `/api/audio/${track.chatId}/${cleanName}`;
+    }
+
+    const normalizedTrack: PlayerTrack = {
+      ...track,
+      mp3Url: safeMp3Url,
+      durationSec: track.durationSec || 180,
+    };
+
+    // 2. If same track is already loaded in audio element
+    if (
+      currentTrack &&
+      currentTrack.chatId === track.chatId &&
+      currentTrack.version === track.version &&
+      audioRef.current &&
+      audioRef.current.src &&
+      !webAudioPlayer.isRunning()
+    ) {
+      if (audioRef.current.paused) {
+        audioRef.current
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch(err => {
+            console.warn('Resume play error:', err);
+            if (err.name === 'NotAllowedError') {
+              showSnackbar('Click play in player to unlock browser audio');
+            } else {
+              fallbackToWebAudio(normalizedTrack);
+            }
+          });
+      }
+      return;
+    }
+
+    // 3. New track load
+    webAudioPlayer.stop();
+    setCurrentTrack(normalizedTrack);
+    setDuration(normalizedTrack.durationSec || 180);
+
     if (audioRef.current) {
-      audioRef.current.src = track.mp3Url;
+      audioRef.current.src = safeMp3Url;
       audioRef.current.volume = volume;
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch(err => {
-        console.warn('Audio playback error:', err);
-      });
+      audioRef.current.load();
+      audioRef.current
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch(err => {
+          console.warn('Audio playback error:', err);
+          if (err.name === 'NotAllowedError') {
+            showSnackbar('Autoplay blocked: Click play in player to listen');
+          } else {
+            fallbackToWebAudio(normalizedTrack);
+          }
+        });
+    } else {
+      fallbackToWebAudio(normalizedTrack);
     }
   };
 
   const pauseTrack = () => {
     if (audioRef.current) {
       audioRef.current.pause();
-      setIsPlaying(false);
     }
+    if (webAudioPlayer.isRunning()) {
+      webAudioPlayer.stop();
+    }
+    setIsPlaying(false);
   };
 
   const togglePlayback = () => {
     if (isPlaying) {
       pauseTrack();
-    } else if (currentTrack && audioRef.current) {
-      audioRef.current.play().then(() => setIsPlaying(true));
+    } else if (currentTrack) {
+      if (audioRef.current && audioRef.current.src && !webAudioPlayer.isRunning()) {
+        audioRef.current
+          .play()
+          .then(() => setIsPlaying(true))
+          .catch(err => {
+            console.warn('Toggle playback error:', err);
+            fallbackToWebAudio(currentTrack);
+          });
+      } else {
+        playTrack(currentTrack);
+      }
     }
   };
 
   const seekTrack = (seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = seconds;
-      setCurrentTime(seconds);
+    const clamped = Math.max(0, Math.min(duration || 180, seconds));
+    if (audioRef.current && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
+      try {
+        audioRef.current.currentTime = clamped;
+      } catch (_) {}
     }
+    setCurrentTime(clamped);
   };
 
   const setPlayerVolume = (vol: number) => {

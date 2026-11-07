@@ -479,13 +479,14 @@ export const FloatingChatBox: React.FC = () => {
                         onClick={() => {
                           const latest = activeChat.versions[activeChat.versions.length - 1];
                           if (latest) {
+                            const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat.folderName}_${latest.version || 'v1'}.mp3`);
                             playTrack({
                               chatId: activeChat.id,
                               songName: activeChat.name,
                               version: latest.version,
-                              mp3Url: `/api/audio/${activeChat.id}/${latest.mp3File}`,
-                              midiUrl: `/api/audio/${activeChat.id}/${latest.midiFile}`,
-                              durationSec: latest.durationSec,
+                              mp3Url: `/api/audio/${activeChat.id}/${mp3File}`,
+                              midiUrl: latest.midiFile ? `/api/audio/${activeChat.id}/${latest.midiFile}` : '',
+                              durationSec: latest.durationSec || 180,
                               bpm: latest.bpm,
                               lyrics: activeChat.lyrics,
                             });

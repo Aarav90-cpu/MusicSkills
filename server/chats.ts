@@ -95,18 +95,37 @@ export function listChats(): ChatSession[] {
 }
 
 export function getChat(id: string): { chat: ChatSession; dirPath: string } | null {
+  if (!id) return null;
   const chatsDir = getChatsDir();
+  if (!fs.existsSync(chatsDir)) return null;
   const entries = fs.readdirSync(chatsDir, { withFileTypes: true });
 
+  const targetId = id.trim().toLowerCase();
+
   for (const entry of entries) {
-    if (entry.isDirectory() && entry.name.endsWith(`-${id}`)) {
-      const dirPath = path.join(chatsDir, entry.name);
-      const metaPath = path.join(dirPath, 'chat.json');
+    if (!entry.isDirectory()) continue;
+    const entryLower = entry.name.toLowerCase();
+    const dirPath = path.join(chatsDir, entry.name);
+    const metaPath = path.join(dirPath, 'chat.json');
+
+    if (entryLower.endsWith(`-${targetId}`) || entryLower === targetId) {
       if (fs.existsSync(metaPath)) {
-        const chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
-        chat.folderName = entry.name;
-        return { chat, dirPath };
+        try {
+          const chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
+          chat.folderName = entry.name;
+          return { chat, dirPath };
+        } catch (_) {}
       }
+    }
+
+    if (fs.existsSync(metaPath)) {
+      try {
+        const chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
+        if (chat.id && chat.id.toLowerCase() === targetId) {
+          chat.folderName = entry.name;
+          return { chat, dirPath };
+        }
+      } catch (_) {}
     }
   }
   return null;

@@ -7,3 +7,4 @@ if [ -f "$DIR/node_modules/.bin/tsx" ]; then
 else
   exec npx tsx "$DIR/bin/musicskills.js" "$@"
 fi
+

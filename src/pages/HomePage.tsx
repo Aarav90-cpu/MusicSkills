@@ -64,19 +64,29 @@ export const HomePage: React.FC = () => {
     e.stopPropagation();
     if (chat.versions.length > 0) {
       const latest = chat.versions[chat.versions.length - 1];
+      const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${chat.folderName}_${latest.version || 'v1'}.mp3`);
       playTrack({
         chatId: chat.id,
         songName: chat.name,
         version: latest.version,
-        mp3Url: `/api/audio/${chat.id}/${latest.mp3File}`,
-        midiUrl: `/api/audio/${chat.id}/${latest.midiFile}`,
-        durationSec: latest.durationSec,
+        mp3Url: `/api/audio/${chat.id}/${mp3File}`,
+        midiUrl: latest.midiFile ? `/api/audio/${chat.id}/${latest.midiFile}` : '',
+        durationSec: latest.durationSec || 180,
         lyrics: chat.lyrics,
-        bpm: chat.style.bpm,
+        bpm: chat.style.bpm || 120,
       });
     } else {
-      setActiveChatId(chat.id);
-      setRoute('chat');
+      // Play synthesized master or navigate to generation
+      playTrack({
+        chatId: chat.id,
+        songName: chat.name,
+        version: 'v1',
+        mp3Url: `/api/audio/${chat.id}/${chat.folderName}_v1.mp3`,
+        midiUrl: '',
+        durationSec: 180,
+        lyrics: chat.lyrics,
+        bpm: chat.style.bpm || 120,
+      });
     }
   };
 
@@ -394,15 +404,16 @@ export const HomePage: React.FC = () => {
                         setActiveChatId(chat.id);
                         setRoute('lyrics');
                         if (hasVersion && latestVersion) {
+                          const mp3File = latestVersion.mp3File || (latestVersion.midiFile ? latestVersion.midiFile.replace(/\.mid$/, '.mp3') : `${chat.folderName}_${latestVersion.version || 'v1'}.mp3`);
                           playTrack({
                             chatId: chat.id,
                             songName: chat.name,
                             version: latestVersion.version,
-                            mp3Url: `/api/audio/${chat.id}/${latestVersion.mp3File}`,
-                            midiUrl: `/api/audio/${chat.id}/${latestVersion.midiFile}`,
-                            durationSec: latestVersion.durationSec,
+                            mp3Url: `/api/audio/${chat.id}/${mp3File}`,
+                            midiUrl: latestVersion.midiFile ? `/api/audio/${chat.id}/${latestVersion.midiFile}` : '',
+                            durationSec: latestVersion.durationSec || 180,
                             lyrics: chat.lyrics,
-                            bpm: chat.style.bpm,
+                            bpm: chat.style.bpm || 120,
                           });
                         }
                       }}

@@ -462,7 +462,7 @@ export const VocalStudioPage: React.FC = () => {
       {selectedVersion && (
         <audio
           ref={backingAudioRef}
-          src={`/api/audio/${activeChat.id}/${selectedVersion.mp3File}`}
+          src={`/api/audio/${activeChat.id}/${selectedVersion.mp3File || (selectedVersion.midiFile ? selectedVersion.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat.folderName}_${selectedVersion.version || 'v1'}.mp3`)}`}
           preload="auto"
           onTimeUpdate={(e) => setTeleprompterTime((e.target as HTMLAudioElement).currentTime)}
           onEnded={() => setTeleprompterPlaying(false)}

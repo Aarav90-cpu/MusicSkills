@@ -21,6 +21,7 @@ export const ScrollingLyricsPage: React.FC = () => {
     currentTrack,
     playTrack,
     pauseTrack,
+    togglePlayback,
     seekTrack,
     isPlaying,
     currentTime,
@@ -466,15 +467,16 @@ export const ScrollingLyricsPage: React.FC = () => {
                   const selected = chats.find(c => c.id === id);
                   if (selected && selected.versions.length > 0) {
                     const latest = selected.versions[selected.versions.length - 1];
+                    const mp3File = latest.mp3File || (latest.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : `${selected.folderName}_${latest.version || 'v1'}.mp3`);
                     playTrack({
                       chatId: selected.id,
                       songName: selected.name,
                       version: latest.version,
-                      mp3Url: `/api/audio/${selected.id}/${latest.mp3File}`,
-                      midiUrl: `/api/audio/${selected.id}/${latest.midiFile}`,
-                      durationSec: latest.durationSec,
+                      mp3Url: `/api/audio/${selected.id}/${mp3File}`,
+                      midiUrl: latest.midiFile ? `/api/audio/${selected.id}/${latest.midiFile}` : '',
+                      durationSec: latest.durationSec || 180,
                       lyrics: selected.lyrics,
-                      bpm: selected.style.bpm,
+                      bpm: selected.style.bpm || 120,
                     });
                   }
                 }
@@ -802,10 +804,7 @@ export const ScrollingLyricsPage: React.FC = () => {
                     Start Over
                   </button>
                   <button
-                    onClick={() => {
-                      if (isPlaying) pauseTrack();
-                      else if (currentTrack) playTrack(currentTrack);
-                    }}
+                    onClick={togglePlayback}
                     className="btn btn-tonal"
                     style={{ flex: 1, height: '38px', fontSize: '12px', justifyContent: 'center' }}
                   >

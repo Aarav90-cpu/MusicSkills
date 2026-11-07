@@ -35,6 +35,75 @@ function normalizeGenre(genre: string): string {
   return 'pop';
 }
 
+export function findSoundfontPath(): string {
+  const config = loadConfig();
+  const candidates = [
+    config.soundfontPath,
+    '/usr/share/soundfonts/FluidR3_GM.sf2',
+    '/usr/share/soundfonts/FluidR3_GS.sf2',
+    '/usr/share/soundfonts/default.sf2',
+    '/usr/share/sounds/sf2/FluidR3_GM.sf2',
+    '/usr/share/sounds/sf2/default.sf2',
+    '/usr/share/soundfonts/fluid-soundfont/FluidR3_GM.sf2',
+    '/opt/homebrew/share/soundfonts/FluidR3_GM.sf2',
+    '/usr/local/share/soundfonts/FluidR3_GM.sf2',
+  ].filter(Boolean) as string[];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  for (const d of ['/usr/share/soundfonts', '/usr/share/sounds/sf2']) {
+    if (fs.existsSync(d)) {
+      try {
+        const files = fs.readdirSync(d);
+        const sf2 = files.find(f => f.endsWith('.sf2'));
+        if (sf2) return path.join(d, sf2);
+      } catch (_) {}
+    }
+  }
+  return '';
+}
+
+export async function renderMidiToAudio(
+  midiPath: string,
+  mp3Path: string,
+  onProgress?: (stage: string) => void
+): Promise<boolean> {
+  const sfPath = findSoundfontPath();
+  const config = loadConfig();
+  const bitrate = config.mp3Bitrate || '192k';
+  const wavPath = mp3Path.replace(/\.mp3$/, '_render_temp.wav');
+
+  // Strategy A: FluidSynth with -a file -q (Fast, high-fidelity SoundFont rendering)
+  if (sfPath) {
+    try {
+      onProgress?.('Rendering humanized multi-track audio via FluidSynth');
+      await execAsync(`fluidsynth -a file -q -ni -F "${wavPath}" "${sfPath}" "${midiPath}"`);
+      if (fs.existsSync(wavPath) && fs.statSync(wavPath).size > 1000) {
+        onProgress?.('Encoding high-fidelity MP3 master');
+        await execAsync(`ffmpeg -y -i "${wavPath}" -b:a ${bitrate} "${mp3Path}"`);
+        if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
+        if (fs.existsSync(mp3Path)) return true;
+      }
+    } catch (err) {
+      console.warn('FluidSynth SoundFont render failed, falling back:', err);
+    }
+  }
+
+  // Strategy B: Standalone Python MIDI Synthesizer Engine
+  try {
+    onProgress?.('Synthesizing audio via Python fallback engine');
+    const pythonPath = path.resolve(process.cwd(), '.venv/bin/python');
+    const pyBinary = fs.existsSync(pythonPath) ? pythonPath : 'python3';
+    await execAsync(`"${pyBinary}" -m scripts.midi_synth --midi "${midiPath}" --output "${mp3Path}" --bitrate ${bitrate}`);
+    if (fs.existsSync(mp3Path)) return true;
+  } catch (err) {
+    console.warn('Python fallback synth failed:', err);
+  }
+
+  return fs.existsSync(mp3Path);
+}
+
 export async function renderSong(params: {
   chatDir: string;
   topic: string;
@@ -87,30 +156,9 @@ export async function renderSong(params: {
     throw new Error(`MIDI file was not generated at expected path: ${midiPath}`);
   }
 
-  // 3. Check for FluidSynth & SoundFont to render audio
-  params.onProgress?.('Rendering humanized multi-track audio via FluidSynth');
-  const wavPath = path.join(params.chatDir, `${baseName}.wav`);
+  // 3. Render MIDI to Audio MP3 (FluidSynth SoundFont primary, Python engine fallback)
   const mp3Path = path.join(params.chatDir, `${baseName}.mp3`);
-  const sfPath = config.soundfontPath || '/usr/share/soundfonts/FluidR3_GM.sf2';
-
-  if (fs.existsSync(sfPath)) {
-    try {
-      // Render to WAV
-      await execAsync(`fluidsynth -ni -F "${wavPath}" "${sfPath}" "${midiPath}"`);
-
-      params.onProgress?.('Encoding high-fidelity MP3 master');
-      // Convert WAV to MP3
-      const bitrate = config.mp3Bitrate || '192k';
-      await execAsync(`ffmpeg -y -i "${wavPath}" -b:a ${bitrate} "${mp3Path}"`);
-
-      // Clean intermediate WAV to save space
-      if (fs.existsSync(wavPath)) {
-        fs.unlinkSync(wavPath);
-      }
-    } catch (renderErr) {
-      console.warn('FluidSynth/FFmpeg audio render failed, falling back:', renderErr);
-    }
-  }
+  await renderMidiToAudio(midiPath, mp3Path, params.onProgress);
 
   // Calculate duration from timing json or estimate from BPM
   let durationSec = 180;

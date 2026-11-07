@@ -148,8 +148,8 @@ export const PersistentPlayer: React.FC = () => {
         <div
           onClick={e => {
             const rect = e.currentTarget.getBoundingClientRect();
-            const clickPos = (e.clientX - rect.left) / rect.width;
-            seekTrack(clickPos * duration);
+            const clickPos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            seekTrack(clickPos * (duration || 180));
           }}
           style={{
             flex: 1,

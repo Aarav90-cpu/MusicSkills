@@ -10,7 +10,7 @@ import { loadConfig, saveConfig, exportSettingsJson, importSettingsJson, maskKey
 const execFileAsync = promisify(execFile);
 import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap } from './chats';
 import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey, fetchLRCLibReference } from './ai';
-import { renderSong, mixVocalTake } from './audio';
+import { renderSong, mixVocalTake, renderMidiToAudio } from './audio';
 import { detectExternalAgents, startAgentSession, getAgentSession, cancelAgentSession } from './externalAgents';
 
 async function checkCommand(cmd: string, args: string[]): Promise<{ installed: boolean; version?: string; path?: string }> {
@@ -537,44 +537,94 @@ app.post('/api/generate-music', async (req, res) => {
   }
 });
 
-// --- AUDIO FILE SERVING & RANGE STREAMING ---
+// --- AUDIO FILE SERVING & RANGE STREAMING (ON-DEMAND TRANSCODING) ---
 
-app.get('/api/audio/:chatId/:filename', (req, res) => {
-  const result = getChat(req.params.chatId as string);
+async function handleAudioRequest(req: express.Request, res: express.Response) {
+  const chatId = req.params.chatId as string;
+  if (!chatId) return res.status(400).send('Chat ID is required');
+
+  const result = getChat(chatId);
   if (!result) {
     return res.status(404).send('Chat not found');
   }
 
-  const filePath = path.join(result.dirPath, req.params.filename as string);
+  const { dirPath, chat } = result;
+  let filename = req.params.filename as string | undefined;
+
+  // If filename is missing, 'undefined', 'null', or empty: auto-resolve latest audio
+  if (!filename || filename === 'undefined' || filename === 'null') {
+    const latest = chat.versions.length > 0 ? chat.versions[chat.versions.length - 1] : null;
+    filename = latest?.mp3File || (latest?.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : '');
+    if (!filename) {
+      if (fs.existsSync(dirPath)) {
+        const files = fs.readdirSync(dirPath);
+        const mp3 = files.find(f => f.endsWith('.mp3'));
+        if (mp3) filename = mp3;
+        else {
+          const mid = files.find(f => f.endsWith('.mid'));
+          if (mid) filename = mid.replace(/\.mid$/, '.mp3');
+        }
+      }
+    }
+  }
+
+  if (!filename) {
+    return res.status(404).send('No audio track available for this song');
+  }
+
+  let filePath = path.join(dirPath, filename);
+
+  // If requested MP3 does not exist on disk, but a MIDI file exists: ON-DEMAND TRANSCRIBE!
+  if (!fs.existsSync(filePath) && filename.endsWith('.mp3')) {
+    const baseName = filename.replace(/\.mp3$/, '');
+    let midiPath = path.join(dirPath, `${baseName}.mid`);
+    if (!fs.existsSync(midiPath)) {
+      if (fs.existsSync(dirPath)) {
+        const files = fs.readdirSync(dirPath);
+        const anyMid = files.find(f => f.endsWith('.mid'));
+        if (anyMid) midiPath = path.join(dirPath, anyMid);
+      }
+    }
+
+    if (fs.existsSync(midiPath)) {
+      try {
+        await renderMidiToAudio(midiPath, filePath);
+        // Persist mp3 filename into chat version if missing
+        if (chat.versions.length > 0) {
+          const latest = chat.versions[chat.versions.length - 1];
+          if (!latest.mp3File) {
+            latest.mp3File = filename;
+            saveChat(chat);
+          }
+        }
+      } catch (synthErr) {
+        console.warn('On-demand audio synthesis error:', synthErr);
+      }
+    }
+  }
+
   if (!fs.existsSync(filePath)) {
     return res.status(404).send('Audio file not found');
   }
 
-  const stat = fs.statSync(filePath);
-  const range = req.headers.range;
+  const isMp3 = filePath.endsWith('.mp3');
+  const isWav = filePath.endsWith('.wav');
+  const isMid = filePath.endsWith('.mid');
+  const contentType = isMp3 ? 'audio/mpeg' : (isWav ? 'audio/wav' : (isMid ? 'audio/midi' : 'application/octet-stream'));
 
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-    const chunksize = end - start + 1;
-    const file = fs.createReadStream(filePath, { start, end });
-
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+  // Use res.sendFile with dotfiles: 'allow' so that .chats/ paths are fully accessible with Range support
+  res.sendFile(path.resolve(filePath), {
+    dotfiles: 'allow',
+    acceptRanges: true,
+    headers: {
       'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': filePath.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav',
-    });
-    file.pipe(res);
-  } else {
-    res.writeHead(200, {
-      'Content-Length': stat.size,
-      'Content-Type': filePath.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav',
-    });
-    fs.createReadStream(filePath).pipe(res);
-  }
-});
+      'Content-Type': contentType,
+    },
+  });
+}
+
+app.get(['/api/audio/:chatId', '/api/audio/:chatId/:filename'], handleAudioRequest);
+app.head(['/api/audio/:chatId', '/api/audio/:chatId/:filename'], handleAudioRequest);
 
 // --- VOCAL RECORDINGS & MIXING ROUTES ---
 
@@ -957,13 +1007,19 @@ function autoIntakeOutputs() {
         fs.copyFileSync(path.join(outputsDir, lrcFile), path.join(targetDir, `${newChat.folderName}_v1.lrc`));
       }
 
+      const outputMp3 = `${baseName}.mp3`;
+      const targetMp3 = `${newChat.folderName}_v1.mp3`;
+      if (fs.existsSync(path.join(outputsDir, outputMp3))) {
+        fs.copyFileSync(path.join(outputsDir, outputMp3), path.join(targetDir, targetMp3));
+      }
+
       newChat.versions.push({
         version: 'v1',
         createdAt: new Date().toISOString(),
         bpm: 120,
         key: 'C',
         midiFile: `${newChat.folderName}_v1.mid`,
-        mp3File: '',
+        mp3File: targetMp3,
         leadSheetFile: '',
         durationSec: 180,
         notes: 'Auto-imported from external outputs/ directory',

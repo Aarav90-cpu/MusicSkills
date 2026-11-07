@@ -9,6 +9,9 @@ export const ChatCreationPage: React.FC = () => {
     activeChatId,
     refreshChats,
     playTrack,
+    togglePlayback,
+    currentTrack,
+    seekTrack,
     currentTime,
     isPlaying,
     setRoute,
@@ -327,11 +330,12 @@ export const ChatCreationPage: React.FC = () => {
 
         // Autoplay generated version
         if (activeChatId) {
+          const mp3File = data.version.mp3File || (data.version.midiFile ? data.version.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat?.folderName || 'song'}_v1.mp3`);
           playTrack({
             chatId: activeChatId,
             songName: topic || activeChat?.name || 'Untitled',
             version: data.version.version,
-            mp3Url: `/api/audio/${activeChatId}/${data.version.mp3File}`,
+            mp3Url: `/api/audio/${activeChatId}/${mp3File}`,
             midiUrl: `/api/audio/${activeChatId}/${data.version.midiFile}`,
             durationSec: data.version.durationSec,
             lyrics,
@@ -1132,9 +1136,9 @@ export const ChatCreationPage: React.FC = () => {
               <div style={{ margin: '20px 0' }}>
                 <WaveformVisualizer
                   peaks={peaks}
-                  currentTime={0}
+                  currentTime={currentTime}
                   duration={latestVersion?.durationSec || 180}
-                  onSeek={() => {}}
+                  onSeek={seekTrack}
                   height={120}
                 />
               </div>
@@ -1145,23 +1149,32 @@ export const ChatCreationPage: React.FC = () => {
                   type="button"
                   onClick={() => {
                     if (activeChatId && latestVersion) {
-                      playTrack({
-                        chatId: activeChatId,
-                        songName: topic || activeChat?.name || 'Untitled',
-                        version: latestVersion.version,
-                        mp3Url: `/api/audio/${activeChatId}/${latestVersion.mp3File}`,
-                        midiUrl: `/api/audio/${activeChatId}/${latestVersion.midiFile}`,
-                        durationSec: latestVersion.durationSec,
-                        lyrics,
-                        bpm,
-                      });
+                      if (currentTrack && currentTrack.chatId === activeChatId) {
+                        togglePlayback();
+                      } else {
+                        const mp3File = latestVersion.mp3File || (latestVersion.midiFile ? latestVersion.midiFile.replace(/\.mid$/, '.mp3') : `${activeChat?.folderName || 'song'}_${latestVersion.version || 'v1'}.mp3`);
+                        playTrack({
+                          chatId: activeChatId,
+                          songName: topic || activeChat?.name || 'Untitled',
+                          version: latestVersion.version,
+                          mp3Url: `/api/audio/${activeChatId}/${mp3File}`,
+                          midiUrl: `/api/audio/${activeChatId}/${latestVersion.midiFile}`,
+                          durationSec: latestVersion.durationSec || 180,
+                          lyrics,
+                          bpm,
+                        });
+                      }
                     }
                   }}
                   className="btn btn-gradient"
                   style={{ height: '54px', padding: '0 32px', fontSize: '15px' }}
                 >
-                  <span className="material-icons-round" style={{ fontSize: '24px' }}>play_arrow</span>
-                  <span>Play Master Audio</span>
+                  <span className="material-icons-round" style={{ fontSize: '24px' }}>
+                    {isPlaying && currentTrack?.chatId === activeChatId ? 'pause' : 'play_arrow'}
+                  </span>
+                  <span>
+                    {isPlaying && currentTrack?.chatId === activeChatId ? 'Pause Master Audio' : 'Play Master Audio'}
+                  </span>
                 </button>
               </div>
             </div>
