@@ -252,8 +252,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('Resume play error:', err);
             if (err.name === 'NotAllowedError') {
               showSnackbar('Autoplay blocked: Click play in player to unlock browser audio');
+            } else {
+              // Try reloading the audio source if playback failed
+              if (audioRef.current) {
+                audioRef.current.src = safeMp3Url;
+                audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+              }
             }
           });
+      } else {
+        // If already playing, restart track
+        audioRef.current.currentTime = 0;
       }
       return;
     }
@@ -310,6 +319,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('Toggle playback error:', err);
             if (err.name === 'NotAllowedError') {
               showSnackbar('Click play in player to unlock browser audio');
+            } else {
+              // Retry loading from currentTrack definition
+              playTrack(currentTrack);
             }
           });
       } else {
@@ -338,6 +350,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Keyboard shortcut: Space toggles playback unless an input is active
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (e.code === 'Space') {
         const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
         if (tag !== 'input' && tag !== 'textarea' && !(e.target as HTMLElement)?.isContentEditable) {

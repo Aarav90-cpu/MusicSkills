@@ -22,11 +22,12 @@ import {
   getSmartGenres,
   resolveTrackLyrics,
   fetchAndCacheLyricsForTrack,
+  getLiveAudioUrl,
 } from '../utils/trackLibrary';
 import { TrackMetadataModal } from '../components/TrackMetadataModal';
 
 export const StatsPage: React.FC = () => {
-  const { chats, playTrack, setActiveChatId, setRoute, showSnackbar } = useApp();
+  const { chats, refreshChats, playTrack, pauseTrack, currentTrack, isPlaying, setActiveChatId, setRoute, showSnackbar } = useApp();
 
   // Local state
   const [stats, setStats] = useState<StudioStats>(loadStudioStats());
@@ -93,9 +94,29 @@ export const StatsPage: React.FC = () => {
       });
   }, [chats]);
 
-  // Combined tracks universe
+  // Combined tracks universe (deduplicated by ID and title)
   const allTracks: LibraryTrack[] = useMemo(() => {
-    return [...generatedTracks, ...importedTracks];
+    const seenIds = new Set<string>();
+    const seenTitles = new Set<string>();
+    const list: LibraryTrack[] = [];
+
+    // Imported tracks take precedence (they contain file bytes / live audio blob / accurate ID3)
+    for (const t of importedTracks) {
+      seenIds.add(t.id);
+      seenTitles.add(t.title.trim().toLowerCase());
+      list.push(t);
+    }
+
+    for (const t of generatedTracks) {
+      const titleKey = t.title.trim().toLowerCase();
+      if (!seenIds.has(t.id) && !seenTitles.has(titleKey)) {
+        seenIds.add(t.id);
+        seenTitles.add(titleKey);
+        list.push(t);
+      }
+    }
+
+    return list;
   }, [generatedTracks, importedTracks]);
 
   // Filtered and Sorted Tracks
@@ -149,7 +170,35 @@ export const StatsPage: React.FC = () => {
 
   // Play track through global audio player
   const handlePlayTrack = (track: LibraryTrack) => {
+    // If the clicked track is already currently playing, toggle pause
+    if (
+      currentTrack &&
+      (currentTrack.chatId === track.id || currentTrack.songName.trim().toLowerCase() === track.title.trim().toLowerCase()) &&
+      isPlaying
+    ) {
+      pauseTrack();
+      return;
+    }
+
     recordGenrePlay(track.genre);
+
+    // Resolve audio URL: prefer active live in-memory audio object if available
+    let resolvedAudioUrl = getLiveAudioUrl(track.id) || track.audioUrl;
+
+    // Check if dead blob URL from previous sessions and recover
+    if (resolvedAudioUrl && resolvedAudioUrl.startsWith('blob:') && !getLiveAudioUrl(track.id)) {
+      const matchingChat = chats.find(
+        c => c.id === track.id || c.name.trim().toLowerCase() === track.title.trim().toLowerCase()
+      );
+      if (matchingChat && matchingChat.versions && matchingChat.versions.length > 0) {
+        const v = matchingChat.versions[matchingChat.versions.length - 1];
+        const mp3 = v.mp3File || `${matchingChat.folderName || matchingChat.id}_v1.mp3`;
+        resolvedAudioUrl = `/api/audio/${matchingChat.id}/${mp3}`;
+      } else if (!track.id.startsWith('imported-')) {
+        resolvedAudioUrl = `/api/audio/${track.id}/v1_custom.mp3`;
+      }
+    }
+
     playTrack({
       chatId: track.id,
       songName: track.title,
@@ -157,8 +206,8 @@ export const StatsPage: React.FC = () => {
       album: track.album,
       coverArtUrl: track.coverArtUrl,
       version: 'v1',
-      mp3Url: track.audioUrl,
-      midiUrl: track.audioUrl.endsWith('.mid') ? track.audioUrl : '',
+      mp3Url: resolvedAudioUrl,
+      midiUrl: resolvedAudioUrl.endsWith('.mid') ? resolvedAudioUrl : '',
       durationSec: track.durationSec,
       bpm: track.bpm || 120,
       syncedLyrics: track.localSyncedLyrics || track.onlineSyncedLyrics,
@@ -177,6 +226,7 @@ export const StatsPage: React.FC = () => {
 
     try {
       const result = await parseFolderFiles(files);
+      await refreshChats();
       setImportedTracks(loadLibraryTracks());
       showSnackbar(
         `Imported ${result.totalScanned} audio files! Created ${result.createdAlbumsCount} smart albums (${result.matchedLrcCount} local synced lyrics matched).`
@@ -197,6 +247,7 @@ export const StatsPage: React.FC = () => {
     setIsImportingFolder(true);
     try {
       const result = await parseFolderFiles(files);
+      await refreshChats();
       setImportedTracks(loadLibraryTracks());
       showSnackbar(`Imported ${result.totalScanned} tracks successfully!`);
     } catch (err: any) {
@@ -462,10 +513,22 @@ export const StatsPage: React.FC = () => {
                       onClick={() => handlePlayTrack(track)}
                       className="btn-text"
                       style={{ width: '28px', height: '28px', padding: 0 }}
-                      title="Play track"
+                      title={
+                        currentTrack &&
+                        (currentTrack.chatId === track.id ||
+                          currentTrack.songName.trim().toLowerCase() === track.title.trim().toLowerCase()) &&
+                        isPlaying
+                          ? 'Pause track'
+                          : 'Play track'
+                      }
                     >
                       <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
-                        play_circle_outline
+                        {currentTrack &&
+                        (currentTrack.chatId === track.id ||
+                          currentTrack.songName.trim().toLowerCase() === track.title.trim().toLowerCase()) &&
+                        isPlaying
+                          ? 'pause_circle_filled'
+                          : 'play_circle_outline'}
                       </span>
                     </button>
 
@@ -635,30 +698,36 @@ export const StatsPage: React.FC = () => {
 
                   {/* Album Track List preview */}
                   <div style={{ borderTop: '1px solid var(--color-outline)', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {album.tracks.map((t, idx) => (
-                      <div
-                        key={t.id}
-                        onClick={() => handlePlayTrack(t)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          backgroundColor: 'var(--color-container)',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                          <span style={{ color: 'var(--color-text-secondary)', width: '16px' }}>{idx + 1}</span>
-                          <span style={{ fontWeight: 500, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{t.title}</span>
+                    {album.tracks.map((t, idx) => {
+                      const isCurrentPlaying =
+                        currentTrack &&
+                        (currentTrack.chatId === t.id || currentTrack.songName.trim().toLowerCase() === t.title.trim().toLowerCase()) &&
+                        isPlaying;
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => handlePlayTrack(t)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            backgroundColor: 'var(--color-container)',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                            <span style={{ color: 'var(--color-text-secondary)', width: '16px' }}>{idx + 1}</span>
+                            <span style={{ fontWeight: 500, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{t.title}</span>
+                          </div>
+                          <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--color-primary)' }}>
+                            {isCurrentPlaying ? 'pause_circle' : 'play_circle'}
+                          </span>
                         </div>
-                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--color-primary)' }}>
-                          play_circle
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -696,18 +765,38 @@ export const StatsPage: React.FC = () => {
               </div>
 
               <div style={{ borderTop: '1px solid var(--color-outline)', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {artist.tracks.slice(0, 4).map(t => (
-                  <div
-                    key={t.id}
-                    onClick={() => handlePlayTrack(t)}
-                    style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', fontSize: '12px', cursor: 'pointer' }}
-                  >
-                    <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{t.title}</span>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--color-text-secondary)' }}>
-                      {Math.floor(t.durationSec / 60)}:{(t.durationSec % 60).toString().padStart(2, '0')}
-                    </span>
-                  </div>
-                ))}
+                {artist.tracks.slice(0, 4).map(t => {
+                  const isCurrentPlaying =
+                    currentTrack &&
+                    (currentTrack.chatId === t.id || currentTrack.songName.trim().toLowerCase() === t.title.trim().toLowerCase()) &&
+                    isPlaying;
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => handlePlayTrack(t)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '6px 8px',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        backgroundColor: 'var(--color-container)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--color-primary)' }}>
+                          {isCurrentPlaying ? 'pause_circle' : 'play_circle'}
+                        </span>
+                        <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{t.title}</span>
+                      </div>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--color-text-secondary)' }}>
+                        {Math.floor(t.durationSec / 60)}:{(t.durationSec % 60).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -729,16 +818,36 @@ export const StatsPage: React.FC = () => {
                 Total genre duration: {formatHoursMins(g.totalDurationSec)}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid var(--color-outline)', paddingTop: '8px' }}>
-                {g.tracks.slice(0, 3).map(t => (
-                  <div
-                    key={t.id}
-                    onClick={() => handlePlayTrack(t)}
-                    style={{ fontSize: '12px', padding: '4px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
-                  >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-                    <span style={{ color: 'var(--color-text-secondary)' }}>{t.artist}</span>
-                  </div>
-                ))}
+                {g.tracks.slice(0, 3).map(t => {
+                  const isCurrentPlaying =
+                    currentTrack &&
+                    (currentTrack.chatId === t.id || currentTrack.songName.trim().toLowerCase() === t.title.trim().toLowerCase()) &&
+                    isPlaying;
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => handlePlayTrack(t)}
+                      style={{
+                        fontSize: '12px',
+                        padding: '6px 8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        borderRadius: '4px',
+                        backgroundColor: 'var(--color-container)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--color-primary)' }}>
+                          {isCurrentPlaying ? 'pause_circle' : 'play_circle'}
+                        </span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                      </div>
+                      <span style={{ color: 'var(--color-text-secondary)' }}>{t.artist}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -806,12 +915,52 @@ export const StatsPage: React.FC = () => {
                     ) : (
                       pl.trackIds.map(tid => {
                         const trk = allTracks.find(t => t.id === tid);
+                        const isCurrentPlaying =
+                          trk &&
+                          currentTrack &&
+                          (currentTrack.chatId === trk.id ||
+                            currentTrack.songName.trim().toLowerCase() === trk.title.trim().toLowerCase()) &&
+                          isPlaying;
                         return (
                           <div
                             key={tid}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', borderRadius: '4px', backgroundColor: 'var(--color-container)' }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '6px 8px',
+                              borderRadius: '4px',
+                              backgroundColor: 'var(--color-container)',
+                            }}
                           >
-                            <span style={{ fontSize: '13px', fontWeight: 500 }}>{trk?.title || 'Unknown Track'}</span>
+                            <div
+                              onClick={() => trk && handlePlayTrack(trk)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                cursor: trk ? 'pointer' : 'default',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <span
+                                className="material-icons-round"
+                                style={{ fontSize: '18px', color: 'var(--color-primary)' }}
+                              >
+                                {isCurrentPlaying ? 'pause_circle' : 'play_circle'}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '13px',
+                                  fontWeight: 500,
+                                  textOverflow: 'ellipsis',
+                                  overflow: 'hidden',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {trk?.title || 'Unknown Track'}
+                              </span>
+                            </div>
                             <button
                               onClick={() => {
                                 removeTrackFromPlaylist(pl.id, tid);
@@ -844,50 +993,58 @@ export const StatsPage: React.FC = () => {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {favoriteTracks.map(trk => (
-                <div
-                  key={trk.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    borderRadius: '8px',
-                    backgroundColor: 'var(--color-container)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {favoriteTracks.map(trk => {
+                const isCurrentPlaying =
+                  currentTrack &&
+                  (currentTrack.chatId === trk.id ||
+                    currentTrack.songName.trim().toLowerCase() === trk.title.trim().toLowerCase()) &&
+                  isPlaying;
+                return (
+                  <div
+                    key={trk.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      backgroundColor: 'var(--color-container)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <button
+                        onClick={() => handlePlayTrack(trk)}
+                        className="btn-text"
+                        style={{ padding: 0, width: '32px', height: '32px' }}
+                        title={isCurrentPlaying ? 'Pause track' : 'Play track'}
+                      >
+                        <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--color-primary)' }}>
+                          {isCurrentPlaying ? 'pause_circle_filled' : 'play_circle'}
+                        </span>
+                      </button>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 600 }}>{trk.title}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                          {trk.artist} · {trk.album}
+                        </div>
+                      </div>
+                    </div>
+
                     <button
-                      onClick={() => handlePlayTrack(trk)}
+                      onClick={() => {
+                        toggleFavoriteTrack(trk.id);
+                        setStats(loadStudioStats());
+                      }}
                       className="btn-text"
                       style={{ padding: 0, width: '32px', height: '32px' }}
                     >
-                      <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--color-primary)' }}>
-                        play_circle
+                      <span className="material-icons-round" style={{ fontSize: '20px', color: '#FFB020' }}>
+                        star
                       </span>
                     </button>
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600 }}>{trk.title}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                        {trk.artist} · {trk.album}
-                      </div>
-                    </div>
                   </div>
-
-                  <button
-                    onClick={() => {
-                      toggleFavoriteTrack(trk.id);
-                      setStats(loadStudioStats());
-                    }}
-                    className="btn-text"
-                    style={{ padding: 0, width: '32px', height: '32px' }}
-                  >
-                    <span className="material-icons-round" style={{ fontSize: '20px', color: '#FFB020' }}>
-                      star
-                    </span>
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

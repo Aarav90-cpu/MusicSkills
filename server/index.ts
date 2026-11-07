@@ -213,8 +213,14 @@ app.post('/api/test-key', async (req, res) => {
 
 // --- CHATS & STORAGE ROUTES ---
 
-app.get('/api/chats', (req, res) => {
-  const chats = listChats();
+app.get('/api/chats', async (req, res) => {
+  let chats = listChats();
+  if (chats.length === 0) {
+    try {
+      await autoIntakeOutputs();
+      chats = listChats();
+    } catch (_) {}
+  }
   res.json(chats);
 });
 
@@ -545,17 +551,45 @@ async function handleAudioRequest(req: express.Request, res: express.Response) {
   const chatId = req.params.chatId as string;
   if (!chatId) return res.status(400).send('Chat ID is required');
 
-  const result = getChat(chatId);
-  if (!result) {
-    return res.status(404).send('Chat not found');
+  let result = getChat(chatId);
+  if (!result && listChats().length === 0) {
+    try {
+      await autoIntakeOutputs();
+      result = getChat(chatId);
+    } catch (_) {}
   }
 
-  const { dirPath, chat } = result;
+  let dirPath = result?.dirPath;
+  let chat = result?.chat;
   let filename = req.params.filename as string | undefined;
+
+  // Fallback: If not found by chatId, search all chat directories for the requested audio file
+  if (!dirPath && filename) {
+    const chatsDir = getChatsDir();
+    if (fs.existsSync(chatsDir)) {
+      const entries = fs.readdirSync(chatsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const candidateDir = path.join(chatsDir, entry.name);
+        if (fs.existsSync(path.join(candidateDir, filename))) {
+          dirPath = candidateDir;
+          const metaPath = path.join(candidateDir, 'chat.json');
+          if (fs.existsSync(metaPath)) {
+            try { chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch (_) {}
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (!dirPath) {
+    return res.status(404).send('Audio track or project not found');
+  }
 
   // If filename is missing, 'undefined', 'null', or empty: auto-resolve latest audio
   if (!filename || filename === 'undefined' || filename === 'null') {
-    const latest = chat.versions.length > 0 ? chat.versions[chat.versions.length - 1] : null;
+    const latest = chat && chat.versions && chat.versions.length > 0 ? chat.versions[chat.versions.length - 1] : null;
     filename = latest?.mp3File || (latest?.midiFile ? latest.midiFile.replace(/\.mid$/, '.mp3') : '');
     if (!filename) {
       if (fs.existsSync(dirPath)) {
@@ -592,7 +626,7 @@ async function handleAudioRequest(req: express.Request, res: express.Response) {
       try {
         await renderMidiToAudio(midiPath, filePath);
         // Persist mp3 filename into chat version if missing
-        if (chat.versions.length > 0) {
+        if (chat && chat.versions && chat.versions.length > 0) {
           const latest = chat.versions[chat.versions.length - 1];
           if (!latest.mp3File) {
             latest.mp3File = filename;

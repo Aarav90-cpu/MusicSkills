@@ -101,14 +101,21 @@ export function getChat(id: string): { chat: ChatSession; dirPath: string } | nu
   const entries = fs.readdirSync(chatsDir, { withFileTypes: true });
 
   const targetId = id.trim().toLowerCase();
+  const cleanTarget = sanitizeName(id);
 
+  // First pass: exact and prefix/suffix folder matches
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const entryLower = entry.name.toLowerCase();
     const dirPath = path.join(chatsDir, entry.name);
     const metaPath = path.join(dirPath, 'chat.json');
 
-    if (entryLower.endsWith(`-${targetId}`) || entryLower === targetId) {
+    if (
+      entryLower === targetId ||
+      entryLower.endsWith(`-${targetId}`) ||
+      entryLower.startsWith(`${targetId}-`) ||
+      entryLower.startsWith(`${cleanTarget}-`)
+    ) {
       if (fs.existsSync(metaPath)) {
         try {
           const chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
@@ -117,17 +124,45 @@ export function getChat(id: string): { chat: ChatSession; dirPath: string } | nu
         } catch (_) {}
       }
     }
+  }
+
+  // Second pass: inspection of chat.json contents
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dirPath = path.join(chatsDir, entry.name);
+    const metaPath = path.join(dirPath, 'chat.json');
 
     if (fs.existsSync(metaPath)) {
       try {
         const chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
-        if (chat.id && chat.id.toLowerCase() === targetId) {
+        if (
+          (chat.id && chat.id.toLowerCase() === targetId) ||
+          (chat.name && chat.name.toLowerCase() === targetId) ||
+          sanitizeName(chat.name || '') === cleanTarget
+        ) {
           chat.folderName = entry.name;
           return { chat, dirPath };
         }
       } catch (_) {}
     }
   }
+
+  // Third pass: loose substring match
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const entryLower = entry.name.toLowerCase();
+    const dirPath = path.join(chatsDir, entry.name);
+    const metaPath = path.join(dirPath, 'chat.json');
+
+    if (entryLower.includes(cleanTarget) && fs.existsSync(metaPath)) {
+      try {
+        const chat = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ChatSession;
+        chat.folderName = entry.name;
+        return { chat, dirPath };
+      } catch (_) {}
+    }
+  }
+
   return null;
 }
 

@@ -154,8 +154,8 @@ export const ScrollingLyricsPage: React.FC = () => {
         }
       } else if (e.code === 'Space') {
         e.preventDefault();
-        if (isPlaying) pauseTrack();
-        else if (currentTrack) playTrack(currentTrack);
+        e.stopPropagation();
+        togglePlayback();
       }
     };
 

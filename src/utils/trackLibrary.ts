@@ -88,6 +88,21 @@ export interface SmartGenre {
 const TRACKS_STORAGE_KEY = 'musicskills_library_tracks_v2';
 const LYRICS_CACHE_KEY = 'musicskills_lyrics_cache_v1';
 
+// In-memory active blob and file cache to ensure instant playback without network delays
+const liveBlobMap = new Map<string, string>();
+const liveFileMap = new Map<string, File>();
+
+export function getLiveAudioUrl(trackId: string): string | null {
+  return liveBlobMap.get(trackId) || null;
+}
+
+export function registerLiveTrackAudio(trackId: string, file: File): string {
+  const url = URL.createObjectURL(file);
+  liveBlobMap.set(trackId, url);
+  liveFileMap.set(trackId, file);
+  return url;
+}
+
 // --- PERSISTENT STORAGE ---
 
 export function loadLibraryTracks(): LibraryTrack[] {
@@ -95,7 +110,20 @@ export function loadLibraryTracks(): LibraryTrack[] {
     const raw = localStorage.getItem(TRACKS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.map((t: LibraryTrack) => {
+          // Check if active in-memory blob is available
+          if (liveBlobMap.has(t.id)) {
+            t.audioUrl = liveBlobMap.get(t.id)!;
+          } else if (t.audioUrl && t.audioUrl.startsWith('blob:')) {
+            // If track was registered on server, convert to permanent server route
+            if (t.id && !t.id.startsWith('imported-')) {
+              t.audioUrl = `/api/audio/${t.id}/v1_custom.mp3`;
+            }
+          }
+          return t;
+        });
+      }
     }
   } catch (e) {
     console.warn('Failed to load library tracks from localStorage:', e);
@@ -509,7 +537,12 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       console.warn('Server audio upload notice:', uploadErr);
     }
 
-    const finalAudioUrl = permanentAudioUrl || tempBlobUrl;
+    // Register live in-memory audio for zero-latency local playback
+    const liveBlob = registerLiveTrackAudio(trackChatId, audio);
+    const finalAudioUrl = permanentAudioUrl || liveBlob;
+    if (permanentAudioUrl) {
+      liveBlobMap.set(trackChatId, permanentAudioUrl);
+    }
 
     // 3. Assemble complete library track
     const initialTrack: LibraryTrack = {
