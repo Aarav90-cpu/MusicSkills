@@ -65,9 +65,11 @@ export const MusicVideoStudioPage: React.FC = () => {
     showSnackbar('Rendering 1080p Remotion video master via FFmpeg...');
 
     try {
+      const chosenStyle = showWaveform ? 'waveform' : (showVinyl ? 'album-art' : 'spectrum');
       const res = await fetch(`/api/chats/${activeChat.id}/video/render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ style: chosenStyle }),
       });
 
       if (res.ok) {

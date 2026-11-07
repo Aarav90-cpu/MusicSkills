@@ -105,6 +105,18 @@ export function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const parts = dataUrl.split(',');
+  const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+  const bstr = atob(parts[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
 export function getLiveAudioUrl(trackId: string): string | null {
   return liveBlobMap.get(trackId) || null;
 }
@@ -564,9 +576,14 @@ export async function parseFolderFiles(files: FileList | File[]): Promise<Folder
       formData.append('bpm', '120');
       formData.append('durationSec', (durationSec || 180).toString());
 
-      // Send companion cover image to server if present
+      // Send companion cover image to server if present, or embedded ID3 cover
       if (companionImg) {
         formData.append('cover', companionImg);
+      } else if (id3Meta.coverArtDataUrl && id3Meta.coverArtDataUrl.startsWith('data:')) {
+        try {
+          const coverBlob = dataUrlToBlob(id3Meta.coverArtDataUrl);
+          formData.append('cover', coverBlob, 'cover.jpg');
+        } catch (_) {}
       }
 
       // Send engraved lyrics (Priority 1) or companion LRC to server

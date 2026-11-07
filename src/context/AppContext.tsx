@@ -30,6 +30,7 @@ interface AppContextType {
   togglePlayback: () => void;
   seekTrack: (seconds: number) => void;
   setPlayerVolume: (vol: number) => void;
+  updateCurrentTrack: (trackId: string, updates: Partial<PlayerTrack>) => void;
   
   // Activity Stream
   activityEvents: ActivityEvent[];
@@ -372,6 +373,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateCurrentTrack = (trackId: string, updates: Partial<PlayerTrack>) => {
+    setCurrentTrack(prev => {
+      if (!prev) return null;
+      const cleanTarget = trackId.trim().toLowerCase();
+      const matchesChat = prev.chatId && prev.chatId.toLowerCase() === cleanTarget;
+      const matchesSong = prev.songName && prev.songName.trim().toLowerCase() === cleanTarget;
+      if (matchesChat || matchesSong) {
+        return { ...prev, ...updates };
+      }
+      return prev;
+    });
+  };
+
   // Keyboard shortcut: Space toggles playback unless an input is active
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -443,6 +457,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         togglePlayback,
         seekTrack,
         setPlayerVolume,
+        updateCurrentTrack,
         activityEvents,
         addActivityEvent,
         clearActivityEvents,

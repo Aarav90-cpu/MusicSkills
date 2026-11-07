@@ -263,11 +263,17 @@ app.patch('/api/chats/:id', (req, res) => {
 });
 
 app.delete('/api/chats/:id', (req, res) => {
-  const ok = deleteChat(req.params.id as string);
+  const id = req.params.id as string;
+  const ok = deleteChat(id);
   if (!ok) {
     return res.status(404).json({ error: 'Chat not found' });
   }
-  res.json({ success: true, id: req.params.id });
+  broadcastEvent({
+    type: 'chats_updated',
+    message: `Project deleted: ${id}`,
+    payload: { id },
+  });
+  res.json({ success: true, id });
 });
 
 // --- PROJECT EXPORT & IMPORT ROUTES ---
@@ -365,6 +371,10 @@ app.patch('/api/chats/:id/lyrics-sync', (req, res) => {
     if (chat.versions.length > 0) {
       chat.versions[chat.versions.length - 1].leadSheetFile = `${chat.folderName}_synced.lrc`;
     }
+    const parsed = parseLrcToLyricsMap(lrcContent);
+    if (Object.keys(parsed).length > 0) {
+      chat.lyrics = parsed;
+    }
   }
 
   if (lyrics) {
@@ -372,7 +382,114 @@ app.patch('/api/chats/:id/lyrics-sync', (req, res) => {
   }
 
   saveChat(chat);
+  broadcastEvent({
+    type: 'chats_updated',
+    message: `Synchronized lyrics saved for "${chat.name}"`,
+    payload: { id: chat.id, leadSheetFile: `${chat.folderName}_synced.lrc` },
+  });
   res.json({ success: true, chat });
+});
+
+const handleChatMetadataUpdate = async (req: express.Request, res: express.Response) => {
+  const chatId = req.params.id as string;
+  let resolved = await resolveChatDirectory(chatId);
+  if (!resolved) {
+    return res.json({ success: true, localOnly: true });
+  }
+
+  const { chat, dirPath } = resolved;
+  const {
+    title,
+    artist,
+    album,
+    genre,
+    bpm,
+    rootKey,
+    mood,
+    purpose,
+    composer,
+    producer,
+    notes,
+    coverArtUrl,
+    lyrics,
+    lrcContent,
+  } = req.body;
+
+  if (title) chat.name = title.trim();
+  if (genre || bpm || rootKey || mood || purpose) {
+    chat.style = {
+      ...(chat.style || {}),
+      genre: genre || chat.style?.genre || 'pop',
+      bpm: bpm ? parseInt(bpm, 10) : chat.style?.bpm || 120,
+      key: rootKey || chat.style?.key || 'C',
+      moods: mood ? [mood] : chat.style?.moods || [],
+      purposes: purpose ? [purpose] : chat.style?.purposes || [],
+    };
+  }
+
+  if (artist) {
+    chat.style.description = `Custom import by ${artist}`;
+  }
+
+  // Cover art persistence from data URL
+  if (coverArtUrl && typeof coverArtUrl === 'string' && coverArtUrl.startsWith('data:image/')) {
+    try {
+      const parts = coverArtUrl.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+      const buffer = Buffer.from(parts[1], 'base64');
+      fs.writeFileSync(path.join(dirPath, `cover.${ext}`), buffer);
+      chat.coverArtUrl = `/api/audio/${chat.id}/cover?t=${Date.now()}`;
+    } catch (e) {
+      console.warn('Cover art persistence notice:', e);
+    }
+  }
+
+  // Lyrics persistence
+  if (lrcContent && typeof lrcContent === 'string') {
+    const lrcPath = path.join(dirPath, `${chat.folderName}_synced.lrc`);
+    fs.writeFileSync(lrcPath, lrcContent, 'utf-8');
+    if (chat.versions && chat.versions.length > 0) {
+      chat.versions[chat.versions.length - 1].leadSheetFile = `${chat.folderName}_synced.lrc`;
+    }
+    chat.lyrics = parseLrcToLyricsMap(lrcContent);
+  } else if (lyrics && typeof lyrics === 'string') {
+    chat.lyrics = parseLrcToLyricsMap(lyrics);
+  }
+
+  saveChat(chat);
+  broadcastEvent({
+    type: 'chats_updated',
+    message: `Updated metadata for "${chat.name}"`,
+    payload: { id: chat.id, name: chat.name },
+  });
+
+  return res.json({ success: true, chat });
+};
+
+app.patch('/api/chats/:id/metadata', handleChatMetadataUpdate);
+app.post('/api/chats/:id/metadata', handleChatMetadataUpdate);
+
+app.post('/api/chats/:id/cover-art', upload.single('cover'), async (req, res) => {
+  const chatId = req.params.id as string;
+  const resolved = await resolveChatDirectory(chatId);
+  if (!resolved) return res.status(404).json({ error: 'Chat not found' });
+
+  const { chat, dirPath } = resolved;
+  if (!req.file) return res.status(400).json({ error: 'No cover file provided' });
+
+  const ext = req.file.mimetype === 'image/png' ? 'png' : req.file.mimetype === 'image/webp' ? 'webp' : 'jpg';
+  fs.writeFileSync(path.join(dirPath, `cover.${ext}`), req.file.buffer);
+  chat.coverArtUrl = `/api/audio/${chat.id}/cover?t=${Date.now()}`;
+  saveChat(chat);
+
+  broadcastEvent({
+    type: 'chats_updated',
+    message: `Updated cover art for "${chat.name}"`,
+    payload: { id: chat.id, coverUrl: chat.coverArtUrl },
+  });
+
+  return res.json({ success: true, coverUrl: chat.coverArtUrl });
 });
 
 app.get('/api/chats/:id/video', (req, res) => {
@@ -437,6 +554,18 @@ app.post('/api/chats/:id/video/render', async (req, res) => {
       const extracted = extractEmbeddedId3(mp3Path);
       if (extracted.cover) {
         fs.writeFileSync(coverPath, extracted.cover);
+      } else {
+        // Generate SVG cover badge and convert to JPG for video background
+        const artist = chat.style?.description?.replace(/^Custom import by\s*/i, '') || 'MusicSkills Studio';
+        const svg = generateCoverArtSvg(chat.name, artist);
+        const tempSvgPath = path.join(dirPath, 'cover_temp.svg');
+        fs.writeFileSync(tempSvgPath, svg, 'utf-8');
+        try {
+          await execFileAsync('ffmpeg', ['-y', '-i', tempSvgPath, coverPath]);
+        } catch (_) {}
+        try {
+          if (fs.existsSync(tempSvgPath)) fs.unlinkSync(tempSvgPath);
+        } catch (_) {}
       }
     }
   }
@@ -571,7 +700,20 @@ Do not use emojis at any cost.`,
     timestamp: new Date().toISOString(),
   });
 
+  // If the AI co-writer proposed new lyrics sections, automatically incorporate them
+  if (assistantReply.includes('[') && assistantReply.includes(']')) {
+    const parsedSections = parseLrcToLyricsMap(assistantReply);
+    if (Object.keys(parsedSections).length > 0) {
+      chat.lyrics = { ...(chat.lyrics || {}), ...parsedSections };
+    }
+  }
+
   saveChat(chat);
+  broadcastEvent({
+    type: 'chats_updated',
+    message: `AI Co-Writer updated "${chat.name}"`,
+    payload: { id: chat.id },
+  });
   res.json({ reply: assistantReply, chat });
 });
 
@@ -699,7 +841,7 @@ async function handleAudioRequest(req: express.Request, res: express.Response) {
   if (!chatId && !titleHint) return res.status(400).send('Chat ID or Song Title is required');
 
   let resolved = await resolveChatDirectory(chatId, titleHint);
-  if (!resolved && listChats().length === 0) {
+  if (!resolved) {
     try {
       await autoIntakeOutputs();
       resolved = await resolveChatDirectory(chatId, titleHint);
@@ -842,17 +984,24 @@ async function handleCoverRequest(req: express.Request, res: express.Response) {
   const chatId = req.params.chatId as string;
   const titleHint = (req.query.title as string) || (req.query.name as string);
 
-  const resolved = await resolveChatDirectory(chatId, titleHint);
+  let resolved = await resolveChatDirectory(chatId, titleHint);
+  if (!resolved) {
+    try {
+      await autoIntakeOutputs();
+      resolved = await resolveChatDirectory(chatId, titleHint);
+    } catch (_) {}
+  }
+
   if (resolved) {
     const { dirPath, chat } = resolved;
-    const coverJpg = path.join(dirPath, 'cover.jpg');
-    const coverPng = path.join(dirPath, 'cover.png');
-
-    if (fs.existsSync(coverJpg)) {
-      return res.sendFile(path.resolve(coverJpg), { dotfiles: 'allow', headers: { 'Content-Type': 'image/jpeg' } });
-    }
-    if (fs.existsSync(coverPng)) {
-      return res.sendFile(path.resolve(coverPng), { dotfiles: 'allow', headers: { 'Content-Type': 'image/png' } });
+    const coverFiles = ['cover.jpg', 'cover.png', 'cover.webp', 'album.jpg', 'folder.jpg', 'art.jpg'];
+    for (const cf of coverFiles) {
+      const p = path.join(dirPath, cf);
+      if (fs.existsSync(p)) {
+        const ext = path.extname(cf).toLowerCase();
+        const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        return res.sendFile(path.resolve(p), { dotfiles: 'allow', headers: { 'Content-Type': mime } });
+      }
     }
 
     // On-demand extraction of APIC from MP3
@@ -863,6 +1012,7 @@ async function handleCoverRequest(req: express.Request, res: express.Response) {
         const mp3Path = path.join(dirPath, mp3);
         const extracted = extractEmbeddedId3(mp3Path);
         if (extracted.cover) {
+          const coverJpg = path.join(dirPath, 'cover.jpg');
           fs.writeFileSync(coverJpg, extracted.cover);
           return res.sendFile(path.resolve(coverJpg), { dotfiles: 'allow', headers: { 'Content-Type': extracted.mime || 'image/jpeg' } });
         }
@@ -1685,6 +1835,11 @@ async function startServer() {
   }
   setupFileWatchers();
   const isDev = process.env.NODE_ENV !== 'production';
+
+  // Strict API route guard: guarantees /api/* requests never return HTML fallback
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` });
+  });
 
   if (isDev) {
     const { createServer: createViteServer } = await import('vite');

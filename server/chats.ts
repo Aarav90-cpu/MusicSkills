@@ -54,6 +54,7 @@ export interface ChatSession {
     durationSec: number;
     isFavorite: boolean;
   }>;
+  coverArtUrl?: string;
 }
 
 export function sanitizeName(name: string): string {
@@ -237,8 +238,13 @@ export function saveChat(chat: ChatSession): void {
 export function deleteChat(id: string): boolean {
   const result = getChat(id);
   if (!result) return false;
-  fs.rmSync(result.dirPath, { recursive: true, force: true });
-  return true;
+  try {
+    fs.rmSync(result.dirPath, { recursive: true, force: true });
+    return true;
+  } catch (err) {
+    console.error(`Failed to delete chat directory "${result.dirPath}":`, err);
+    return false;
+  }
 }
 
 export async function exportProjectZip(id: string): Promise<{ zipPath: string; filename: string }> {
@@ -251,7 +257,8 @@ export async function exportProjectZip(id: string): Promise<{ zipPath: string; f
   const zipFilename = `${safeName}-${chat.id}.musicskills.zip`;
   const zipPath = path.join('/tmp', `export-${chat.id}-${Date.now()}.zip`);
 
-  await execFileAsync('/usr/bin/zip', ['-r', zipPath, '.'], { cwd: dirPath });
+  const zipBin = fs.existsSync('/usr/bin/zip') ? '/usr/bin/zip' : 'zip';
+  await execFileAsync(zipBin, ['-r', zipPath, '.'], { cwd: dirPath });
   return { zipPath, filename: zipFilename };
 }
 
@@ -261,7 +268,8 @@ export async function importProjectZip(zipFilePath: string): Promise<ChatSession
   fs.mkdirSync(tempExtractDir, { recursive: true });
 
   try {
-    await execFileAsync('/usr/bin/unzip', ['-o', zipFilePath, '-d', tempExtractDir]);
+    const unzipBin = fs.existsSync('/usr/bin/unzip') ? '/usr/bin/unzip' : 'unzip';
+    await execFileAsync(unzipBin, ['-o', zipFilePath, '-d', tempExtractDir]);
 
     const metaPath = path.join(tempExtractDir, 'chat.json');
     if (!fs.existsSync(metaPath)) {

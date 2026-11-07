@@ -28,7 +28,7 @@ import {
 import { TrackMetadataModal } from '../components/TrackMetadataModal';
 
 export const StatsPage: React.FC = () => {
-  const { chats, refreshChats, playTrack, pauseTrack, currentTrack, isPlaying, setActiveChatId, setRoute, showSnackbar } = useApp();
+  const { chats, refreshChats, playTrack, pauseTrack, currentTrack, isPlaying, setActiveChatId, setRoute, showSnackbar, updateCurrentTrack } = useApp();
 
   // Local state
   const [stats, setStats] = useState<StudioStats>(loadStudioStats());
@@ -282,6 +282,40 @@ export const StatsPage: React.FC = () => {
       setImportedTracks(merged);
       showSnackbar(`Saved custom metadata for "${updated.title}"`);
     }
+
+    // Instantly sync active playback player if playing this track
+    updateCurrentTrack(updated.id, {
+      songName: updated.title,
+      artist: updated.artist,
+      album: updated.album,
+      coverArtUrl: updated.coverArtUrl,
+      bpm: updated.bpm,
+    });
+
+    // Persist to backend studio server if corresponding chat/project exists
+    fetch(`/api/chats/${encodeURIComponent(updated.id)}/metadata`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: updated.title,
+        artist: updated.artist,
+        album: updated.album,
+        genre: updated.genre,
+        bpm: updated.bpm,
+        rootKey: updated.rootKey,
+        mood: updated.mood,
+        purpose: updated.purpose,
+        composer: updated.composer,
+        producer: updated.producer,
+        notes: updated.notes,
+        customTags: updated.customTags,
+        coverArtUrl: updated.coverArtUrl,
+        lyrics: updated.offlineStaticLyrics || updated.embeddedStaticLyrics,
+        lrcContent: updated.localSyncedLyrics || updated.embeddedSyncedLyrics,
+      }),
+    })
+      .then(() => refreshChats())
+      .catch(() => {});
   };
 
   // Force Re-fetch LRCLIB from track row
