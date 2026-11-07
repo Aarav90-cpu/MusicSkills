@@ -329,6 +329,59 @@ Visit `http://localhost:3000` in your browser.
    - Full music player suite: create custom playlists, group by albums/artists, and manage favorite tracks.
 15. **Local-First & Private**:
    - All projects, audio takes, stems, and MIDI files are kept locally in `.chats/`. Cross-platform dynamic path resolution with zero hardcoded paths.
+16. **External AI Agent Bridge & Unified CLI (`musicskills`)**:
+   - First-class support for **Claude Code** (`claude`), **Codex CLI** (`codex`), and **Google Antigravity** (`agy`).
+   - Real-time Server-Sent Events (SSE) watcher ensures everything created by external terminal agents instantly syncs into the web studio without manual reloading.
+   - The floating AI assistant can spin up background agent sessions for Claude Code and Codex directly from the browser, streaming live terminal logs and registering generated artifacts.
+
+---
+
+## External AI Agents & Unified CLI (`musicskills`)
+
+External AI agents (such as **Claude Code**, **Codex CLI**, or **Google Antigravity**) operate in external terminal sessions. MusicSkills provides a unified CLI and real-time Server-Sent Events (SSE) synchronization engine so that external AI creations immediately appear in the web studio.
+
+### 1. Unified `musicskills` CLI Commands
+
+Use `musicskills` (or `./bin/musicskills`) to manipulate studio projects from any terminal or AI agent session:
+
+```bash
+# Check system environment, SoundFonts, and detected AI agents
+musicskills status
+
+# List all studio projects and their version counts
+musicskills list
+musicskills list --json
+
+# Create a registered studio project in .chats/
+musicskills new-project --name "Neon Horizon" --genre "synthwave" --bpm 128 --key "D"
+
+# Generate a multi-track MIDI arrangement and 192k MP3 audio
+musicskills generate --id "neon-horizon-abc123" --genre "synthwave" --bpm 128
+
+# Attach AI-written lyrics and compute millisecond timestamps
+musicskills add-lyrics --id "neon-horizon-abc123" --file "lyrics.txt"
+
+# Generate reactive 3D Remotion video animation code
+musicskills remotion --id "neon-horizon-abc123" --prompt "Neon grid tunnel with reactive audio bloom"
+
+# Create a section-specific cover or remix (e.g. Rock breakdown for Chorus)
+musicskills cover --id "neon-horizon-abc123" --section "Chorus" --prompt "Heavy distorted guitars with double-time drums"
+
+# Inspect full project details and version history
+musicskills show --id "neon-horizon-abc123"
+```
+
+### 2. Real-Time Two-Way Studio Synchronization
+
+- **Live SSE Watcher**: The backend monitors `.chats/` and `outputs/`. Whenever an external CLI tool or Python script generates `.mid`, `.lrc`, or video code, the web studio updates in real time via Server-Sent Events (`/api/events`).
+- **Auto-Intake Outputs**: Any standalone `.mid` or `.lrc` created in `outputs/` is automatically imported as a registered studio project with zero manual configuration.
+
+### 3. In-Studio External Agent Sessions (Claude Code & Codex)
+
+From the web studio Floating Chat Box:
+1. Click the AI Engine selector and choose **Claude Code CLI** or **Codex CLI**.
+2. Enter your songwriting or arrangement instructions.
+3. The studio spins up a background agent process, streams terminal stdout/stderr logs in real time, and automatically registers generated artifacts (MIDI files, MP3 renders, lead sheets, Remotion video compositions) as actionable cards in the studio.
 
 ---
 

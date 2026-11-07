@@ -272,4 +272,44 @@ When a user asks for a song, execute the following procedure:
   - Launch with `npm run dev` at `http://localhost:3000`.
   - Features 5-step song creation, live vocal recording with teleprompter and metronome count-in, A/B auditioning deck, and 100% local-first storage in `.chats/`.
 
+---
+
+## 7. External AI Agents & Unified CLI (`musicskills`)
+
+When working from external AI terminal agents (**Claude Code**, **Codex CLI**, or **Google Antigravity**), all creations are seamlessly reflected in the web studio via the `musicskills` CLI and real-time Server-Sent Events (SSE).
+
+### External Agent CLI Workflow
+
+1. **Create or select a project**:
+   ```bash
+   musicskills new-project --name "Galactic Drift" --genre "synthwave" --bpm 126 --key "E"
+   ```
+
+2. **Generate the MIDI & MP3 arrangement**:
+   ```bash
+   musicskills generate --id "<project-id>" --genre "synthwave" --bpm 126
+   ```
+
+3. **Attach AI-written lyrics & timestamps**:
+   ```bash
+   musicskills add-lyrics --id "<project-id>" --file "lyrics.txt"
+   ```
+
+4. **Generate reactive 3D Remotion video code**:
+   ```bash
+   musicskills remotion --id "<project-id>" --prompt "Synthwave wireframe sunset with reactive audio particles"
+   ```
+
+5. **Cover / remix a specific section**:
+   ```bash
+   musicskills cover --id "<project-id>" --section "Chorus" --prompt "Add aggressive synth leads and halftime drums"
+   ```
+
+### Real-Time Two-Way Studio Sync
+
+- Every file written by external tools to `.chats/` or `outputs/` triggers an SSE update to the web app (`/api/events`).
+- The web studio immediately reloads projects, plays newly synthesized audio, and renders 3D Remotion visualizer code with zero manual page refreshes.
+- Users can also invoke Claude Code or Codex directly from the in-studio Floating Chat Box with real-time streaming terminal logs and automated artifact discovery cards.
+
+
 

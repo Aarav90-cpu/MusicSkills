@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# MusicSkills External Agent CLI Launcher
+# Works seamlessly with Claude Code, Codex, Antigravity, and Terminal sessions.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$DIR/node_modules/.bin/tsx" ]; then
+  exec "$DIR/node_modules/.bin/tsx" "$DIR/bin/musicskills.js" "$@"
+else
+  exec npx tsx "$DIR/bin/musicskills.js" "$@"
+fi

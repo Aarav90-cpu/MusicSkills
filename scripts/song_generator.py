@@ -224,6 +224,57 @@ def parse_lyrics_text(text: str) -> Dict[str, List[str]]:
     return sections
 
 
+def resolve_genre(genre_str: str) -> str:
+    """Normalize and resolve any subgenre to a primary genre profile key."""
+    if not genre_str:
+        return "pop"
+    g = genre_str.strip().lower().replace("_", "-")
+    if g in GENRE_PROFILES:
+        return g
+    subgenre_map = {
+        "synthwave": "electronic",
+        "synth-pop": "pop",
+        "synthpop": "pop",
+        "dance-pop": "pop",
+        "electropop": "pop",
+        "trap": "hip-hop",
+        "drill": "hip-hop",
+        "boom-bap": "hip-hop",
+        "rap": "hip-hop",
+        "indie-rock": "rock",
+        "alternative": "rock",
+        "punk": "rock",
+        "hard-rock": "rock",
+        "house": "electronic",
+        "techno": "electronic",
+        "trance": "electronic",
+        "dubstep": "electronic",
+        "dnb": "electronic",
+        "ambient": "electronic",
+        "disco": "electronic",
+        "edm": "electronic",
+        "drift-phonk": "phonk",
+        "brazilian": "phonk",
+        "bollywood": "indian",
+        "qawwali": "indian",
+        "bhangra": "indian",
+        "ghazal": "indian",
+        "bebop": "jazz",
+        "swing": "jazz",
+        "bluegrass": "country",
+        "americana": "country",
+        "ska": "reggae",
+        "dancehall": "reggae",
+        "dub": "reggae",
+        "metalcore": "metal",
+        "death-metal": "metal",
+    }
+    for sub, parent in subgenre_map.items():
+        if sub in g:
+            return parent
+    return "pop"
+
+
 class SongGenerator:
     """
     Main generative music system combining arrangement, humanization,
@@ -243,7 +294,7 @@ class SongGenerator:
         seed: Optional[int] = None,
     ):
         self.topic = topic
-        self.genre_key = genre.lower().replace(" ", "-")
+        self.genre_key = resolve_genre(genre)
         self.profile = GENRE_PROFILES.get(self.genre_key, GENRE_PROFILES["pop"])
         self.mood = mood.lower()
         self.purpose = purpose.lower()

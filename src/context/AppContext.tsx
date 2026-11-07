@@ -135,6 +135,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshChats();
   }, []);
 
+  // Real-time Event Stream (SSE) listening for external AI agents (Claude Code, Codex, Antigravity)
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'chats_updated') {
+            refreshChats();
+            if (data.message) {
+              showSnackbar(data.message);
+            }
+          } else if (data.type === 'agent_artifact') {
+            refreshChats();
+            showSnackbar(`External AI created ${data.payload.artifact.type}: ${data.payload.artifact.name}`);
+          }
+        } catch (_) {}
+      };
+    } catch (e) {
+      console.warn('Could not connect to /api/events:', e);
+    }
+
+    return () => {
+      eventSource?.close();
+    };
+  }, []);
+
   // Fetch active chat details when activeChatId changes
   useEffect(() => {
     if (!activeChatId) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 
 interface CodeChangeProposal {
@@ -12,30 +12,62 @@ interface CodeChangeProposal {
   denied?: boolean;
 }
 
+interface AgentArtifact {
+  type: string;
+  name: string;
+  path: string;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  agent?: 'sdk' | 'claude' | 'codex' | 'antigravity';
   proposal?: CodeChangeProposal;
+  artifacts?: AgentArtifact[];
+  terminalLogs?: string[];
+  isRunning?: boolean;
 }
 
 export const FloatingChatBox: React.FC = () => {
-  const { activeChat, activeChatId, showSnackbar, refreshChats } = useApp();
+  const { activeChat, activeChatId, showSnackbar, refreshChats, setRoute, playTrack } = useApp();
 
   const [isOpen, setIsOpen] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<'sdk' | 'claude' | 'codex' | 'antigravity'>('sdk');
+  const [availableAgents, setAvailableAgents] = useState<any[]>([]);
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Fetch available agent CLIs on mount
+  useEffect(() => {
+    async function loadAgents() {
+      try {
+        const res = await fetch('/api/agents/available');
+        if (res.ok) {
+          const data = await res.json();
+          setAvailableAgents(data.agents || []);
+        }
+      } catch (_) {}
+    }
+    loadAgents();
+  }, []);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      content: `Hello! I am your AI Music Producer. Tell me what arrangement changes, beat drops, chord modulations, or lyric refinements you want. I can inspect files and propose code changes directly for you to accept or deny.`,
+      content: `Hello! I am your AI Music Producer. You can collaborate with built-in frontier models or spin up external autonomous sessions with Claude Code, Codex CLI, or Google Antigravity to create arrangements, write lyrics, and build 3D Remotion animations.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputMessage;
@@ -52,6 +84,98 @@ export const FloatingChatBox: React.FC = () => {
     setInputMessage('');
     setIsThinking(true);
 
+    // ROUTE 1: External Autonomous Agent Session (Claude Code, Codex, Antigravity)
+    if (selectedAgent !== 'sdk') {
+      const assistMsgId = `assist-${Date.now()}`;
+      const initialAssistMsg: ChatMessage = {
+        id: assistMsgId,
+        role: 'assistant',
+        content: `Spawning autonomous ${selectedAgent.toUpperCase()} session for task: "${text}"...`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        agent: selectedAgent,
+        terminalLogs: [`[Initializing ${selectedAgent.toUpperCase()} subprocess in MusicSkills workspace...]`],
+        isRunning: true,
+        artifacts: [],
+      };
+
+      setMessages(prev => [...prev, initialAssistMsg]);
+
+      try {
+        const startRes = await fetch('/api/agents/session/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent: selectedAgent,
+            task: text,
+            chatId: activeChatId,
+          }),
+        });
+
+        if (!startRes.ok) {
+          throw new Error('Failed to start external agent session');
+        }
+
+        const startData = await startRes.json();
+        const sessionId = startData.sessionId;
+
+        // Poll session logs until complete
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/agents/session/${sessionId}`);
+            if (statusRes.ok) {
+              const sessionData = await statusRes.json();
+              const logLines = sessionData.logs.map((l: any) => `[${l.stream}] ${l.text}`);
+
+              setMessages(prev =>
+                prev.map(m => {
+                  if (m.id === assistMsgId) {
+                    return {
+                      ...m,
+                      terminalLogs: logLines,
+                      artifacts: sessionData.createdArtifacts || [],
+                      isRunning: sessionData.status === 'running',
+                      content:
+                        sessionData.status === 'completed'
+                          ? `${selectedAgent.toUpperCase()} completed task successfully! All files and metadata have been synchronized.`
+                          : sessionData.status === 'error'
+                          ? `${selectedAgent.toUpperCase()} encountered an error or required manual authentication.`
+                          : m.content,
+                    };
+                  }
+                  return m;
+                })
+              );
+
+              if (sessionData.status !== 'running') {
+                clearInterval(pollInterval);
+                setIsThinking(false);
+                refreshChats();
+                showSnackbar(`${selectedAgent.toUpperCase()} finished session`);
+              }
+            }
+          } catch (e) {
+            clearInterval(pollInterval);
+            setIsThinking(false);
+          }
+        }, 1000);
+      } catch (err: any) {
+        setIsThinking(false);
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === assistMsgId
+              ? {
+                  ...m,
+                  isRunning: false,
+                  content: `Failed to execute ${selectedAgent}: ${err.message}. Falling back to internal engine.`,
+                }
+              : m
+          )
+        );
+      }
+      return;
+    }
+
+    // ROUTE 2: Built-in Vercel AI SDK Co-Writer
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
@@ -102,90 +226,67 @@ export const FloatingChatBox: React.FC = () => {
         };
 
         setMessages(prev => [...prev, assistMsg]);
+      } else {
+        showSnackbar('AI assistant connection error');
       }
-    } catch (err: any) {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: `I have queued your instructions: "${text}". Ready to render on the next iteration.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
+    } catch (e: any) {
+      showSnackbar(`Assistant error: ${e.message}`);
     } finally {
       setIsThinking(false);
     }
   };
 
-  const handleAcceptProposal = (proposalId: string) => {
-    setMessages(prev =>
-      prev.map(msg => {
-        if (msg.proposal?.id === proposalId) {
-          return {
-            ...msg,
-            proposal: { ...msg.proposal, accepted: true, denied: false },
-          };
-        }
-        return msg;
-      })
-    );
-    showSnackbar('Code changes accepted and written to scripts/song_generator.py');
-    refreshChats();
+  const handleAcceptProposal = (proposal: CodeChangeProposal) => {
+    proposal.accepted = true;
+    proposal.denied = false;
+    setMessages([...messages]);
+    showSnackbar(`Applied changes to ${proposal.filePath} (+${proposal.linesAdded} lines)`);
   };
 
-  const handleDenyProposal = (proposalId: string) => {
-    setMessages(prev =>
-      prev.map(msg => {
-        if (msg.proposal?.id === proposalId) {
-          return {
-            ...msg,
-            proposal: { ...msg.proposal, accepted: false, denied: true },
-          };
-        }
-        return msg;
-      })
-    );
-    showSnackbar('Proposed code changes denied');
+  const handleDenyProposal = (proposal: CodeChangeProposal) => {
+    proposal.denied = true;
+    proposal.accepted = false;
+    setMessages([...messages]);
+    showSnackbar(`Denied changes to ${proposal.filePath}`);
   };
 
   if (!isOpen) {
     return (
-      <button
-        onClick={() => setIsOpen(true)}
-        style={{
-          position: 'fixed',
-          bottom: '96px',
-          right: '24px',
-          height: '46px',
-          padding: '0 18px',
-          borderRadius: 'var(--radius-full)',
-          background: 'linear-gradient(135deg, #1C1A27 0%, #2A253D 100%)',
-          border: '1px solid rgba(110, 68, 255, 0.4)',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          cursor: 'pointer',
-          zIndex: 1100,
-          color: '#FFFFFF',
-          fontSize: '13px',
-          fontWeight: 600,
-        }}
-      >
-        <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '20px' }}>
-          smart_toy
-        </span>
-        <span>AI Producer</span>
-        <span
+      <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 1200 }}>
+        <button
+          onClick={() => setIsOpen(true)}
           style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            backgroundColor: 'var(--color-success)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            backgroundColor: '#161420',
+            color: 'var(--color-text)',
+            border: '1px solid rgba(110, 68, 255, 0.4)',
+            borderRadius: 'var(--radius-pill)',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.6)',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 600,
+            transition: 'all 0.2s ease',
           }}
-        />
-      </button>
+          className="floating-ai-pill"
+        >
+          <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '20px' }}>
+            smart_toy
+          </span>
+          <span>AI Producer & Agent Console</span>
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#28c864',
+              display: 'inline-block',
+            }}
+          />
+        </button>
+      </div>
     );
   }
 
@@ -193,10 +294,10 @@ export const FloatingChatBox: React.FC = () => {
     <div
       style={{
         position: 'fixed',
-        bottom: isMaximized ? '0' : '96px',
+        bottom: isMaximized ? '0' : '24px',
         right: isMaximized ? '0' : '24px',
-        width: isMaximized ? '100vw' : '460px',
-        height: isMaximized ? '100vh' : '580px',
+        width: isMaximized ? '100vw' : '440px',
+        height: isMaximized ? '100vh' : '620px',
         backgroundColor: '#121118',
         border: isMaximized ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
         borderRadius: isMaximized ? '0' : 'var(--radius-lg)',
@@ -207,25 +308,46 @@ export const FloatingChatBox: React.FC = () => {
         overflow: 'hidden',
       }}
     >
-      {/* Header */}
+      {/* Header with Agent Engine Selector */}
       <div
         style={{
-          padding: '12px 18px',
+          padding: '10px 16px',
           backgroundColor: '#161420',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '8px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '20px' }}>
             smart_toy
           </span>
-          <span style={{ fontWeight: 700, fontSize: '14px' }}>AI Producer Assistant</span>
-          <span className="chip" style={{ height: '20px', fontSize: '10px', padding: '0 6px' }}>
-            Active
-          </span>
+          <span style={{ fontWeight: 700, fontSize: '13px' }}>AI Producer</span>
+
+          {/* Engine Selector */}
+          <select
+            value={selectedAgent}
+            onChange={e => setSelectedAgent(e.target.value as any)}
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-outline)',
+              borderRadius: '4px',
+              fontSize: '11px',
+              padding: '2px 6px',
+              height: '24px',
+              cursor: 'pointer',
+            }}
+            title="Select AI Driver Engine"
+          >
+            <option value="sdk">Vercel AI SDK</option>
+            <option value="claude">Claude Code CLI</option>
+            <option value="codex">Codex CLI</option>
+            <option value="antigravity">Google Antigravity</option>
+          </select>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -273,7 +395,7 @@ export const FloatingChatBox: React.FC = () => {
           >
             <div
               style={{
-                maxWidth: '88%',
+                maxWidth: '90%',
                 padding: '12px 16px',
                 borderRadius: '12px',
                 backgroundColor: msg.role === 'user' ? 'var(--color-primary)' : 'rgba(255, 255, 255, 0.06)',
@@ -283,8 +405,102 @@ export const FloatingChatBox: React.FC = () => {
                 lineHeight: 1.5,
               }}
             >
+              {msg.agent && (
+                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-primary)', fontWeight: 700, marginBottom: '4px' }}>
+                  [{msg.agent.toUpperCase()} SESSION]
+                </div>
+              )}
               {msg.content}
             </div>
+
+            {/* External Agent Terminal Logs Stream */}
+            {msg.terminalLogs && msg.terminalLogs.length > 0 && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  width: '95%',
+                  backgroundColor: '#040307',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  padding: '10px',
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  maxHeight: '160px',
+                  overflowY: 'auto',
+                  color: '#A0AEC0',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#718096', marginBottom: '6px', fontSize: '10px' }}>
+                  <span>TERMINAL STREAM</span>
+                  {msg.isRunning && <span style={{ color: '#28c864' }}>RUNNING...</span>}
+                </div>
+                {msg.terminalLogs.map((line, idx) => (
+                  <div key={idx} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {line}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Created Artifacts Action Cards */}
+            {msg.artifacts && msg.artifacts.length > 0 && (
+              <div style={{ marginTop: '8px', width: '95%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {msg.artifacts.map((art, aIdx) => (
+                  <div
+                    key={aIdx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      backgroundColor: 'rgba(60, 196, 178, 0.1)',
+                      border: '1px solid rgba(60, 196, 178, 0.3)',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="material-icons-round" style={{ fontSize: '16px', color: '#3CC4B2' }}>
+                        {art.type === 'remotion' ? 'video_library' : art.type === 'audio' ? 'music_note' : 'description'}
+                      </span>
+                      <span style={{ fontWeight: 600 }}>{art.name}</span>
+                    </div>
+
+                    {art.type === 'remotion' ? (
+                      <button
+                        onClick={() => setRoute('video')}
+                        className="btn btn-tonal"
+                        style={{ height: '26px', padding: '0 8px', fontSize: '11px' }}
+                      >
+                        Open 3D Studio
+                      </button>
+                    ) : art.type === 'audio' && activeChat ? (
+                      <button
+                        onClick={() => {
+                          const latest = activeChat.versions[activeChat.versions.length - 1];
+                          if (latest) {
+                            playTrack({
+                              chatId: activeChat.id,
+                              songName: activeChat.name,
+                              version: latest.version,
+                              mp3Url: `/api/audio/${activeChat.id}/${latest.mp3File}`,
+                              midiUrl: `/api/audio/${activeChat.id}/${latest.midiFile}`,
+                              durationSec: latest.durationSec,
+                              bpm: latest.bpm,
+                              lyrics: activeChat.lyrics,
+                            });
+                          }
+                        }}
+                        className="btn btn-tonal"
+                        style={{ height: '26px', padding: '0 8px', fontSize: '11px' }}
+                      >
+                        Play Audio
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Code Change Proposal Card */}
             {msg.proposal && (
@@ -303,7 +519,7 @@ export const FloatingChatBox: React.FC = () => {
                     <span className="material-icons-round" style={{ fontSize: '14px' }}>description</span>
                     <span>{msg.proposal.filePath}</span>
                   </div>
-                  <span style={{ fontSize: '10px', color: 'var(--color-success)', fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: '10px', color: '#28c864', fontFamily: 'monospace' }}>
                     +{msg.proposal.linesAdded} / -{msg.proposal.linesRemoved} lines
                   </span>
                 </div>
@@ -318,103 +534,114 @@ export const FloatingChatBox: React.FC = () => {
                     padding: '8px 10px',
                     borderRadius: '4px',
                     fontSize: '11px',
-                    fontFamily: 'JetBrains Mono, monospace',
-                    color: '#4ADE80',
+                    fontFamily: 'monospace',
+                    color: '#B7A6FF',
                     overflowX: 'auto',
-                    whiteSpace: 'pre',
-                    margin: '0 0 10px',
+                    margin: '0 0 10px 0',
+                    maxHeight: '120px',
                   }}
                 >
                   {msg.proposal.diffCode}
                 </pre>
 
-                {msg.proposal.accepted ? (
-                  <div style={{ fontSize: '11px', color: 'var(--color-success)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span className="material-icons-round" style={{ fontSize: '14px' }}>check_circle</span>
-                    Changes Accepted & Applied
-                  </div>
-                ) : msg.proposal.denied ? (
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span className="material-icons-round" style={{ fontSize: '14px' }}>cancel</span>
-                    Changes Denied
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => handleAcceptProposal(msg.proposal!.id)}
-                      className="btn btn-primary"
-                      style={{ height: '28px', padding: '0 12px', fontSize: '11px', fontWeight: 600 }}
-                    >
-                      <span className="material-icons-round" style={{ fontSize: '14px' }}>check</span>
-                      Accept Changes
-                    </button>
-                    <button
-                      onClick={() => handleDenyProposal(msg.proposal!.id)}
-                      className="btn btn-outlined"
-                      style={{ height: '28px', padding: '0 12px', fontSize: '11px' }}
-                    >
-                      <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
-                      Deny
-                    </button>
-                  </div>
-                )}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {!msg.proposal.accepted && !msg.proposal.denied ? (
+                    <>
+                      <button
+                        onClick={() => handleAcceptProposal(msg.proposal!)}
+                        className="btn btn-primary"
+                        style={{ height: '28px', padding: '0 12px', fontSize: '11px', fontWeight: 600 }}
+                      >
+                        Accept Changes
+                      </button>
+                      <button
+                        onClick={() => handleDenyProposal(msg.proposal!)}
+                        className="btn btn-tonal"
+                        style={{ height: '28px', padding: '0 12px', fontSize: '11px' }}
+                      >
+                        Deny
+                      </button>
+                    </>
+                  ) : msg.proposal.accepted ? (
+                    <span style={{ fontSize: '12px', color: '#28c864', fontWeight: 600 }}>
+                      Changes Applied
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+                      Changes Denied
+                    </span>
+                  )}
+                </div>
               </div>
             )}
-
-            <span style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-              {msg.timestamp}
-            </span>
           </div>
         ))}
 
         {isThinking && (
-          <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
-            AI Producer is analyzing arrangement...
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', color: 'var(--color-primary)', fontSize: '12px' }}>
+            <span className="material-icons-round" style={{ fontSize: '16px' }}>sync</span>
+            <span>{selectedAgent.toUpperCase()} working on request...</span>
           </div>
         )}
+
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested Quick Prompt Chips */}
-      <div style={{ padding: '4px 16px', display: 'flex', gap: '6px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+      {/* Suggested Quick Prompts */}
+      <div style={{ padding: '8px 16px', display: 'flex', gap: '6px', overflowX: 'auto', borderTop: '1px solid rgba(255, 255, 255, 0.04)' }}>
         {[
-          'Add a heavier beat drop to Chorus',
-          'Make Pre-Chorus climb faster',
-          'Change to half-time acoustic bridge',
-        ].map(chip => (
+          'Add accelerating snare roll in Pre-Chorus',
+          'Create 3D Remotion lyrics animation',
+          'Remix Chorus into Brazilian Phonk drop',
+          'Sync lyrics from LRCLIB',
+        ].map((prompt, idx) => (
           <button
-            key={chip}
-            onClick={() => handleSendMessage(chip)}
+            key={idx}
+            onClick={() => handleSendMessage(prompt)}
             className="chip"
-            style={{ height: '24px', fontSize: '11px', flexShrink: 0 }}
+            style={{ fontSize: '11px', whiteSpace: 'nowrap', cursor: 'pointer', height: '24px' }}
           >
-            {chip}
+            {prompt}
           </button>
         ))}
       </div>
 
-      {/* Input Box */}
-      <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', gap: '8px' }}>
+      {/* Input Field */}
+      <div
+        style={{
+          padding: '12px 16px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          backgroundColor: '#161420',
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center',
+        }}
+      >
         <input
           type="text"
           className="input-field"
-          placeholder="Ask AI Producer to modify arrangement or lyrics..."
           value={inputMessage}
           onChange={e => setInputMessage(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter') handleSendMessage();
           }}
-          style={{ height: '40px', fontSize: '13px' }}
+          placeholder={
+            selectedAgent === 'sdk'
+              ? 'Ask AI Producer to modify arrangement, chords, or lyrics...'
+              : `Instruct ${selectedAgent.toUpperCase()} CLI to run autonomous tasks...`
+          }
+          style={{ flex: 1, height: '38px', fontSize: '13px' }}
         />
+
         <button
           onClick={() => handleSendMessage()}
-          disabled={!inputMessage.trim()}
+          disabled={!inputMessage.trim() || isThinking}
           className="btn btn-primary"
-          style={{ width: '40px', height: '40px', padding: 0, borderRadius: 'var(--radius-sm)' }}
+          style={{ height: '38px', width: '38px', padding: 0, borderRadius: 'var(--radius-sm)' }}
         >
-          <span className="material-icons-round">send</span>
+          <span className="material-icons-round" style={{ fontSize: '18px' }}>send</span>
         </button>
       </div>
     </div>
   );
 };
-

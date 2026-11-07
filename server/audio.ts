@@ -17,6 +17,24 @@ export interface RenderResult {
   peaks: number[];
 }
 
+const VALID_GENRES = ['pop', 'hip-hop', 'rock', 'electronic', 'phonk', 'indian', 'jazz', 'country', 'reggae', 'metal'];
+
+function normalizeGenre(genre: string): string {
+  if (!genre) return 'pop';
+  const g = genre.toLowerCase().trim();
+  if (VALID_GENRES.includes(g)) return g;
+  if (['synthwave', 'edm', 'techno', 'house', 'trance', 'dubstep', 'dnb', 'ambient', 'disco', 'dance'].some(k => g.includes(k))) return 'electronic';
+  if (['rap', 'trap', 'drill', 'hip hop', 'boom bap'].some(k => g.includes(k))) return 'hip-hop';
+  if (['punk', 'indie', 'grunge', 'alternative', 'alt'].some(k => g.includes(k))) return 'rock';
+  if (['bollywood', 'carnatic', 'hindustani', 'desi', 'raga', 'bhangra'].some(k => g.includes(k))) return 'indian';
+  if (['bebop', 'swing', 'blues'].some(k => g.includes(k))) return 'jazz';
+  if (['folk', 'bluegrass', 'americana'].some(k => g.includes(k))) return 'country';
+  if (['ska', 'dancehall', 'dub'].some(k => g.includes(k))) return 'reggae';
+  if (['deathcore', 'metalcore', 'heavy metal', 'thrash'].some(k => g.includes(k))) return 'metal';
+  if (['drift', 'brazilian'].some(k => g.includes(k))) return 'phonk';
+  return 'pop';
+}
+
 export async function renderSong(params: {
   chatDir: string;
   topic: string;
@@ -41,9 +59,10 @@ export async function renderSong(params: {
   params.onProgress?.('Composing arrangement and musical harmony');
 
   // 2. Run Python song generator
+  const safeGenre = normalizeGenre(params.genre);
   const cmd = `"${pyBinary}" -m scripts.cli ` +
     `--topic "${params.topic.replace(/"/g, '\\"')}" ` +
-    `--genre "${params.genre}" ` +
+    `--genre "${safeGenre}" ` +
     `--mood "${params.mood}" ` +
     `--purpose "${params.purpose}" ` +
     `--key "${params.key}" ` +

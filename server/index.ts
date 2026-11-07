@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap } from './chats';
 import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey, fetchLRCLibReference } from './ai';
 import { renderSong, mixVocalTake } from './audio';
+import { detectExternalAgents, startAgentSession, getAgentSession, cancelAgentSession } from './externalAgents';
 
 async function checkCommand(cmd: string, args: string[]): Promise<{ installed: boolean; version?: string; path?: string }> {
   try {
@@ -39,6 +40,34 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Multer upload config for vocal recordings
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+
+// --- REAL-TIME EVENT STREAM (SSE) FOR EXTERNAL AGENTS & BROWSER ---
+const sseClients = new Set<express.Response>();
+
+export function broadcastEvent(event: { type: string; payload?: any; message?: string }) {
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(data);
+    } catch (_) {
+      sseClients.delete(client);
+    }
+  }
+}
+
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  sseClients.add(res);
+  res.write(`data: ${JSON.stringify({ type: 'connected', clientsCount: sseClients.size })}\n\n`);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
 
 // --- SYSTEM & CONFIG ROUTES ---
 
@@ -325,6 +354,42 @@ app.patch('/api/chats/:id/lyrics-sync', (req, res) => {
 
   saveChat(chat);
   res.json({ success: true, chat });
+});
+
+app.get('/api/chats/:id/video', (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  const { dirPath } = result;
+  const videoFile = path.join(dirPath, 'video', 'RemotionComposition.tsx');
+  if (fs.existsSync(videoFile)) {
+    const code = fs.readFileSync(videoFile, 'utf-8');
+    return res.json({ exists: true, compositionCode: code });
+  }
+
+  return res.json({ exists: false, compositionCode: '' });
+});
+
+app.post('/api/chats/:id/video', (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  const { dirPath, chat } = result;
+  const { compositionCode } = req.body;
+  if (!compositionCode) return res.status(400).json({ error: 'Composition code is required' });
+
+  const videoDir = path.join(dirPath, 'video');
+  if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+  const videoFile = path.join(videoDir, 'RemotionComposition.tsx');
+  fs.writeFileSync(videoFile, compositionCode, 'utf-8');
+
+  broadcastEvent({
+    type: 'chats_updated',
+    message: `Updated 3D Remotion composition for "${chat.name}"`,
+    payload: { id: chat.id, file: 'video/RemotionComposition.tsx' },
+  });
+
+  res.json({ success: true, path: videoFile });
 });
 
 // --- AI SONGWRITING & LYRICS ROUTES ---
@@ -813,9 +878,145 @@ app.get('/api/lrclib/get', async (req, res) => {
   }
 });
 
+// --- EXTERNAL AGENT SESSION RUNNER (CLAUDE CODE, CODEX, ANTIGRAVITY) ---
+
+app.get('/api/agents/available', async (req, res) => {
+  const agents = await detectExternalAgents();
+  res.json({ agents });
+});
+
+app.post('/api/agents/session/start', async (req, res) => {
+  const { agent, task, chatId } = req.body;
+  if (!task) return res.status(400).json({ error: 'Task prompt is required' });
+
+  const session = startAgentSession({
+    agent: agent || 'claude',
+    task,
+    chatId,
+    onLogChunk: (log) => {
+      broadcastEvent({
+        type: 'agent_log',
+        payload: { sessionId: session.id, log },
+      });
+    },
+    onArtifactFound: (artifact) => {
+      broadcastEvent({
+        type: 'agent_artifact',
+        payload: { sessionId: session.id, artifact },
+        message: `External Agent created ${artifact.type}: ${artifact.name}`,
+      });
+    },
+  });
+
+  res.json({ success: true, sessionId: session.id, status: session.status, agent: session.agent });
+});
+
+app.get('/api/agents/session/:id', (req, res) => {
+  const session = getAgentSession(req.params.id as string);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  res.json({
+    id: session.id,
+    agent: session.agent,
+    status: session.status,
+    task: session.task,
+    startedAt: session.startedAt,
+    completedAt: session.completedAt,
+    exitCode: session.exitCode,
+    logs: session.logs,
+    createdArtifacts: session.createdArtifacts,
+  });
+});
+
+app.post('/api/agents/session/:id/cancel', (req, res) => {
+  const success = cancelAgentSession(req.params.id as string);
+  res.json({ success });
+});
+
+// --- AUTOMATIC FILE WATCHER & OUTPUTS INTAKE ---
+
+let watchDebounceTimer: NodeJS.Timeout | null = null;
+
+function autoIntakeOutputs() {
+  const outputsDir = path.resolve(process.cwd(), 'outputs');
+  if (!fs.existsSync(outputsDir)) return;
+  const files = fs.readdirSync(outputsDir);
+  const midFiles = files.filter(f => f.endsWith('.mid'));
+
+  for (const mid of midFiles) {
+    const baseName = mid.replace(/\.mid$/, '');
+    const existing = listChats().find(c => c.folderName.startsWith(baseName) || c.name.toLowerCase() === baseName.toLowerCase());
+    if (!existing) {
+      const title = baseName.replace(/[_-]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const newChat = createChat(title);
+      const targetDir = path.join(getChatsDir(), newChat.folderName);
+      fs.copyFileSync(path.join(outputsDir, mid), path.join(targetDir, `${newChat.folderName}_v1.mid`));
+
+      const lrcFile = `${baseName}.lrc`;
+      if (fs.existsSync(path.join(outputsDir, lrcFile))) {
+        fs.copyFileSync(path.join(outputsDir, lrcFile), path.join(targetDir, `${newChat.folderName}_v1.lrc`));
+      }
+
+      newChat.versions.push({
+        version: 'v1',
+        createdAt: new Date().toISOString(),
+        bpm: 120,
+        key: 'C',
+        midiFile: `${newChat.folderName}_v1.mid`,
+        mp3File: '',
+        leadSheetFile: '',
+        durationSec: 180,
+        notes: 'Auto-imported from external outputs/ directory',
+      });
+      saveChat(newChat);
+      broadcastEvent({
+        type: 'chats_updated',
+        message: `Auto-imported external track: "${title}"`,
+        payload: { id: newChat.id, name: title },
+      });
+    }
+  }
+}
+
+function setupFileWatchers() {
+  const chatsDir = getChatsDir();
+  try {
+    if (fs.existsSync(chatsDir)) {
+      fs.watch(chatsDir, { recursive: true }, (eventType, filename) => {
+        if (watchDebounceTimer) clearTimeout(watchDebounceTimer);
+        watchDebounceTimer = setTimeout(() => {
+          broadcastEvent({
+            type: 'chats_updated',
+            message: `Project change detected: ${filename || 'library'}`,
+            payload: { filename },
+          });
+        }, 250);
+      });
+    }
+  } catch (e) {
+    console.warn('Could not watch .chats directory:', e);
+  }
+
+  // Watch outputs/ directory for external AI tools
+  const outputsDir = path.resolve(process.cwd(), 'outputs');
+  try {
+    if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir, { recursive: true });
+    fs.watch(outputsDir, (eventType, filename) => {
+      if (!filename) return;
+      if (filename.endsWith('.mid') || filename.endsWith('.lrc')) {
+        if (watchDebounceTimer) clearTimeout(watchDebounceTimer);
+        watchDebounceTimer = setTimeout(() => {
+          autoIntakeOutputs();
+        }, 300);
+      }
+    });
+  } catch (_) {}
+}
+
 // --- SERVER INITIALIZATION WITH VITE INTEGRATION ---
 
 async function startServer() {
+  setupFileWatchers();
   const isDev = process.env.NODE_ENV !== 'production';
 
   if (isDev) {

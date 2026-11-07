@@ -43,3 +43,4 @@ class TestLRCLibClient:
         record = fetch_lyrics(title="Song")
         assert record is not None
         assert record.get("syncedLyrics") == "[00:05.00]Synced lyrics"
+

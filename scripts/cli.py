@@ -9,7 +9,7 @@ import os
 import sys
 
 from scripts.humanizer import HumanizeConfig, Humanizer
-from scripts.song_generator import GENRE_PROFILES, SongGenerator, parse_lyrics_text
+from scripts.song_generator import GENRE_PROFILES, SongGenerator, parse_lyrics_text, resolve_genre
 
 
 def main() -> int:
@@ -28,8 +28,7 @@ def main() -> int:
         "-g",
         type=str,
         default="pop",
-        choices=list(GENRE_PROFILES.keys()),
-        help=f"Musical genre ({', '.join(GENRE_PROFILES.keys())})",
+        help=f"Musical genre ({', '.join(GENRE_PROFILES.keys())}) or subgenre",
     )
     parser.add_argument(
         "--mood",
@@ -110,6 +109,7 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    args.genre = resolve_genre(args.genre)
 
     if args.list_styles:
         print("\n=== MusicSkills Classification Matrix ===")

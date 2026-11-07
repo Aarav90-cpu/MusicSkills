@@ -2,7 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 
 export const MusicVideoStudioPage: React.FC = () => {
-  const { currentTrack, isPlaying, currentTime, duration, seekTrack, togglePlayback, showSnackbar } = useApp();
+  const {
+    activeChat,
+    chats,
+    setActiveChatId,
+    currentTrack,
+    isPlaying,
+    currentTime,
+    duration,
+    seekTrack,
+    togglePlayback,
+    showSnackbar,
+  } = useApp();
 
   // Mode: 'preview' (Remotion Timeline + 3D Canvas) | 'code' (Composition Code Editor)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
@@ -12,6 +23,7 @@ export const MusicVideoStudioPage: React.FC = () => {
   const currentFrame = Math.floor(currentTime * fps);
   const totalFrames = Math.max(1, Math.floor(duration * fps));
   const [selectedTrackLayer, setSelectedTrackLayer] = useState<string>('3d-scene');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Three.js / WebGL Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -50,6 +62,48 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
   };
 };
 `);
+
+  // Load custom composition code if the active chat has one
+  useEffect(() => {
+    if (!activeChat) return;
+
+    fetch(`/api/chats/${activeChat.id}/video`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.exists && data.compositionCode) {
+          setCompositionCode(data.compositionCode);
+        }
+      })
+      .catch(() => {});
+  }, [activeChat?.id]);
+
+  const handleSaveComposition = async () => {
+    if (!activeChat) {
+      showSnackbar('Applied composition preview in memory');
+      setViewMode('preview');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/chats/${activeChat.id}/video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ compositionCode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSnackbar(`Saved Remotion composition to ${activeChat.name}`);
+      } else {
+        showSnackbar('Failed to persist composition');
+      }
+    } catch (e) {
+      showSnackbar('Error saving composition');
+    } finally {
+      setIsSaving(false);
+      setViewMode('preview');
+    }
+  };
 
   // Simple, robust WebGL 3D Canvas rendering loop
   useEffect(() => {
@@ -168,6 +222,32 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
               movie_filter
             </span>
             <span style={{ fontWeight: 700, fontSize: '15px' }}>Remotion + Three.js Video Studio</span>
+          </div>
+
+          {/* Project Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Project:</span>
+            <select
+              value={activeChat?.id || ''}
+              onChange={e => setActiveChatId(e.target.value || null)}
+              style={{
+                backgroundColor: '#181724',
+                color: '#FFF',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '5px',
+                padding: '4px 10px',
+                fontSize: '12px',
+                outline: 'none',
+                maxWidth: '180px',
+              }}
+            >
+              <option value="">(Select Song Project)</option>
+              {chats.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Mode Switcher: Preview vs Code */}
@@ -429,21 +509,49 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
               <div
                 onClick={() => setSelectedTrackLayer('drops')}
                 style={{
-                  height: '38px',
+                  minHeight: '38px',
                   borderRadius: '4px',
                   backgroundColor: selectedTrackLayer === 'drops' ? 'rgba(255, 79, 163, 0.15)' : '#181622',
                   border: '1px solid rgba(255, 79, 163, 0.3)',
                   display: 'flex',
                   alignItems: 'center',
-                  padding: '0 12px',
+                  padding: '4px 12px',
                   gap: '10px',
                   cursor: 'pointer',
+                  flexWrap: 'wrap',
                 }}
               >
-                <span className="material-icons-round" style={{ fontSize: '16px', color: '#FF4FA3' }}>
-                  bolt
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>Beat Drops & Transition Markers</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="material-icons-round" style={{ fontSize: '16px', color: '#FF4FA3' }}>
+                    bolt
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 600 }}>Beat Drops & Transition Markers</span>
+                </div>
+
+                {activeChat?.sections && activeChat.sections.length > 0 && (
+                  <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+                    {activeChat.sections.map((sec, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 6px',
+                          borderRadius: '3px',
+                          backgroundColor:
+                            sec.energy === 'high'
+                              ? 'rgba(255, 79, 163, 0.3)'
+                              : sec.energy === 'mid'
+                              ? 'rgba(110, 68, 255, 0.3)'
+                              : 'rgba(255, 255, 255, 0.1)',
+                          color: '#FFF',
+                          border: '1px solid rgba(255, 255, 255, 0.15)',
+                        }}
+                      >
+                        {sec.name} ({sec.bars}b)
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -466,15 +574,15 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
             </span>
 
             <button
-              onClick={() => {
-                showSnackbar('Saved 3D scene code and re-rendered composition');
-                setViewMode('preview');
-              }}
+              onClick={handleSaveComposition}
+              disabled={isSaving}
               className="btn btn-primary"
               style={{ height: '30px', padding: '0 14px', fontSize: '12px' }}
             >
-              <span className="material-icons-round" style={{ fontSize: '15px' }}>check</span>
-              Apply & Run Preview
+              <span className="material-icons-round" style={{ fontSize: '15px' }}>
+                {isSaving ? 'hourglass_top' : 'check'}
+              </span>
+              {isSaving ? 'Saving...' : 'Apply & Run Preview'}
             </button>
           </div>
 
