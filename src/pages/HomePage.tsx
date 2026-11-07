@@ -211,6 +211,24 @@ export const HomePage: React.FC = () => {
             <span className="material-icons-round" style={{ fontSize: '18px' }}>subtitles</span>
             <span>Stage Lyrics & Syncer</span>
           </button>
+
+          {/* Beat Studio DAW Button */}
+          <button
+            onClick={() => setRoute('studio')}
+            className="btn btn-primary"
+            style={{
+              height: '40px',
+              padding: '0 14px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+            }}
+            title="Open LMMS-style Beat Studio DAW"
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>graphic_eq</span>
+            <span>Beat Studio (DAW)</span>
+          </button>
         </div>
       </div>
 
@@ -434,6 +452,80 @@ export const HomePage: React.FC = () => {
                     >
                       <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
                         subtitles
+                      </span>
+                    </button>
+
+                    {/* Open in Beat Studio */}
+                    <button
+                      className="btn-text"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setActiveChatId(chat.id);
+                        setRoute('studio');
+                      }}
+                      title="Open in Beat Studio (LMMS DAW)"
+                      style={{ width: '28px', height: '28px', padding: 0 }}
+                    >
+                      <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
+                        graphic_eq
+                      </span>
+                    </button>
+
+                    {/* Duplicate Project */}
+                    <button
+                      className="btn-text"
+                      onClick={async e => {
+                        e.stopPropagation();
+                        try {
+                          const res = await fetch(`/api/chats/${chat.id}/duplicate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ asCover: false }),
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            await refreshChats();
+                            showSnackbar(`Duplicated "${chat.name}"!`);
+                          }
+                        } catch (err: any) {
+                          showSnackbar(`Duplicate error: ${err.message}`);
+                        }
+                      }}
+                      title="Duplicate project"
+                      style={{ width: '28px', height: '28px', padding: 0 }}
+                    >
+                      <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-text-secondary)' }}>
+                        content_copy
+                      </span>
+                    </button>
+
+                    {/* Use as Cover */}
+                    <button
+                      className="btn-text"
+                      onClick={async e => {
+                        e.stopPropagation();
+                        try {
+                          const res = await fetch(`/api/chats/${chat.id}/duplicate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ asCover: true }),
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            await refreshChats();
+                            setActiveChatId(data.chat.id);
+                            setRoute('studio');
+                            showSnackbar(`Created cover project "${data.chat.name}"!`);
+                          }
+                        } catch (err: any) {
+                          showSnackbar(`Cover creation error: ${err.message}`);
+                        }
+                      }}
+                      title="Create arrangement cover in Beat Studio"
+                      style={{ width: '28px', height: '28px', padding: 0 }}
+                    >
+                      <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--color-text-secondary)' }}>
+                        queue_music
                       </span>
                     </button>
 

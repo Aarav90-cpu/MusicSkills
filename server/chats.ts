@@ -55,6 +55,9 @@ export interface ChatSession {
     isFavorite: boolean;
   }>;
   coverArtUrl?: string;
+  studioArrangement?: any;
+  copiedFrom?: string;
+  coverOf?: string;
 }
 
 export function sanitizeName(name: string): string {
@@ -233,6 +236,91 @@ export function saveChat(chat: ChatSession): void {
   if (!result) return;
   chat.updatedAt = new Date().toISOString();
   fs.writeFileSync(path.join(result.dirPath, 'chat.json'), JSON.stringify(chat, null, 2), 'utf-8');
+}
+
+export function duplicateChat(
+  sourceId: string,
+  options?: {
+    name?: string;
+    asCover?: boolean;
+    genre?: string;
+    bpm?: number;
+    coverInstruction?: string;
+    includeAudio?: boolean;
+  }
+): ChatSession | null {
+  const result = getChat(sourceId);
+  if (!result) return null;
+
+  const { chat: sourceChat, dirPath: sourceDir } = result;
+  const chatsDir = getChatsDir();
+
+  const isCover = Boolean(options?.asCover);
+  const defaultName = isCover ? `Cover of ${sourceChat.name}` : `${sourceChat.name} (Copy)`;
+  const newName = (options?.name && options.name.trim()) || defaultName;
+
+  const id = Math.random().toString(36).substring(2, 8);
+  const safeName = sanitizeName(newName);
+  const folderName = `${safeName}-${id}`;
+  const dirPath = path.join(chatsDir, folderName);
+  fs.mkdirSync(dirPath, { recursive: true });
+
+  const clonedChat: ChatSession = JSON.parse(JSON.stringify(sourceChat));
+  clonedChat.id = id;
+  clonedChat.name = newName;
+  clonedChat.folderName = folderName;
+  clonedChat.createdAt = new Date().toISOString();
+  clonedChat.updatedAt = new Date().toISOString();
+  clonedChat.copiedFrom = sourceChat.id;
+
+  if (isCover) {
+    clonedChat.coverOf = sourceChat.name;
+    if (options?.coverInstruction) {
+      clonedChat.style.description = `Cover variation: ${options.coverInstruction}`;
+    }
+  }
+
+  if (options?.bpm) {
+    clonedChat.style.bpm = Number(options.bpm);
+  }
+  if (options?.genre) {
+    clonedChat.style.genre = options.genre;
+  }
+
+  // Copy cover art if available
+  const coverJpg = path.join(sourceDir, 'cover.jpg');
+  const coverPng = path.join(sourceDir, 'cover.png');
+  if (fs.existsSync(coverJpg)) {
+    try {
+      fs.copyFileSync(coverJpg, path.join(dirPath, 'cover.jpg'));
+      clonedChat.coverArtUrl = `/api/audio/${id}/cover?t=${Date.now()}`;
+    } catch (_) {}
+  } else if (fs.existsSync(coverPng)) {
+    try {
+      fs.copyFileSync(coverPng, path.join(dirPath, 'cover.png'));
+      clonedChat.coverArtUrl = `/api/audio/${id}/cover?t=${Date.now()}`;
+    } catch (_) {}
+  }
+
+  // Copy audio files if requested
+  if (options?.includeAudio !== false) {
+    try {
+      const files = fs.readdirSync(sourceDir);
+      for (const f of files) {
+        if (f.endsWith('.mp3') || f.endsWith('.wav') || f.endsWith('.mid') || f.endsWith('.lrc')) {
+          try {
+            fs.copyFileSync(path.join(sourceDir, f), path.join(dirPath, f));
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  } else {
+    // If not copying audio versions, reset versions list for fresh beat making
+    clonedChat.versions = [];
+  }
+
+  fs.writeFileSync(path.join(dirPath, 'chat.json'), JSON.stringify(clonedChat, null, 2), 'utf-8');
+  return clonedChat;
 }
 
 export function deleteChat(id: string): boolean {

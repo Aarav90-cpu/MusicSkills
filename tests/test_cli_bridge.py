@@ -164,6 +164,48 @@ class TestCliBridge(unittest.TestCase):
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    def test_cli_duplicate_project_as_cover(self):
+        """Verifies that musicskills duplicate can branch a project as a cover."""
+        list_res = subprocess.run(
+            [CLI_PATH, "list", "--json"],
+            cwd=ROOT_DIR,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        projects = json.loads(list_res.stdout)
+        if len(projects) > 0:
+            target_id = projects[0]["id"]
+            dup_res = subprocess.run(
+                [
+                    CLI_PATH,
+                    "duplicate",
+                    "-p",
+                    target_id,
+                    "--as-cover",
+                    "--name",
+                    "Unit Test Cover Branch",
+                    "--json",
+                ],
+                cwd=ROOT_DIR,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            data = json.loads(dup_res.stdout)
+            self.assertTrue(data.get("success"))
+            self.assertEqual(data.get("name"), "Unit Test Cover Branch")
+            self.assertEqual(data.get("copiedFrom"), target_id)
+            self.assertTrue(data.get("coverOf"))
+
+            # Clean up created test folder
+            folder = data.get("folder")
+            if folder:
+                target_dir = os.path.join(ROOT_DIR, ".chats", folder)
+                if os.path.exists(target_dir):
+                    import shutil
+                    shutil.rmtree(target_dir)
+
 
 if __name__ == "__main__":
     unittest.main()

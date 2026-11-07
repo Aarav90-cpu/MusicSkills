@@ -274,6 +274,25 @@ export const IteratePage: React.FC = () => {
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button
+            onClick={() => setRoute('studio')}
+            className="btn btn-tonal"
+            style={{
+              height: '42px',
+              padding: '0 16px',
+              borderRadius: 'var(--radius-pill)',
+              fontSize: '13px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="Open in visual LMMS-like Beat Studio"
+          >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>graphic_eq</span>
+            <span>Beat Studio (DAW)</span>
+          </button>
+
+          <button
             onClick={() => setShowCoverModal(true)}
             disabled={isRegenerating || versions.length === 0}
             className="btn btn-outlined"

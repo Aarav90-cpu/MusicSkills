@@ -9,7 +9,7 @@ import { promisify } from 'util';
 import { loadConfig, saveConfig, exportSettingsJson, importSettingsJson, maskKey, SETTINGS_FILE } from './config';
 
 const execFileAsync = promisify(execFile);
-import { listChats, getChat, createChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap, backfillChatsMetadata, extractEmbeddedId3, sanitizeName, ChatSession } from './chats';
+import { listChats, getChat, createChat, duplicateChat, saveChat, deleteChat, getChatsDir, exportProjectZip, importProjectZip, importCustomSong, parseLrcToLyricsMap, backfillChatsMetadata, extractEmbeddedId3, sanitizeName, ChatSession } from './chats';
 import { generateLyrics, generateLocalFallbackLyrics, getAIModel, testApiKey, fetchLRCLibReference, generatePythonMusicCode, editPythonMusicCode } from './ai';
 import { renderSong, mixVocalTake, renderMidiToAudio, extractWaveformPeaks } from './audio';
 import { detectExternalAgents, startAgentSession, getAgentSession, cancelAgentSession } from './externalAgents';
@@ -234,6 +234,93 @@ app.post('/api/chats', (req, res) => {
   const { name, style } = req.body;
   const newChat = createChat(name || 'New Song', style);
   res.status(201).json(newChat);
+});
+
+app.post('/api/chats/:id/duplicate', (req, res) => {
+  const { name, asCover, genre, bpm, coverInstruction, includeAudio } = req.body;
+  const duplicated = duplicateChat(req.params.id as string, {
+    name,
+    asCover,
+    genre,
+    bpm: bpm ? parseInt(bpm) : undefined,
+    coverInstruction,
+    includeAudio,
+  });
+
+  if (!duplicated) {
+    return res.status(404).json({ error: 'Source project not found' });
+  }
+
+  broadcastEvent({
+    type: 'chats_updated',
+    message: asCover
+      ? `Created cover project "${duplicated.name}" from "${duplicated.coverOf}"`
+      : `Duplicated project as "${duplicated.name}"`,
+    payload: { chat: duplicated },
+  });
+
+  res.status(201).json({ success: true, chat: duplicated });
+});
+
+app.get('/api/chats/:id/studio-arrangement', (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+  res.json({ success: true, studioArrangement: result.chat.studioArrangement || null });
+});
+
+app.post('/api/chats/:id/studio-arrangement', (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  const { studioArrangement } = req.body;
+  if (!studioArrangement) {
+    return res.status(400).json({ error: 'studioArrangement payload is required' });
+  }
+
+  result.chat.studioArrangement = studioArrangement;
+  if (studioArrangement.bpm) {
+    result.chat.style.bpm = studioArrangement.bpm;
+  }
+  if (studioArrangement.key) {
+    result.chat.style.key = studioArrangement.key;
+  }
+  if (studioArrangement.scale) {
+    result.chat.style.scale = studioArrangement.scale;
+  }
+
+  saveChat(result.chat);
+  broadcastEvent({
+    type: 'chats_updated',
+    message: `Saved beat studio arrangement for "${result.chat.name}"`,
+    payload: { id: result.chat.id },
+  });
+
+  res.json({ success: true, chat: result.chat });
+});
+
+app.post('/api/chats/:id/upload-sample', upload.single('audio'), async (req, res) => {
+  const result = getChat(req.params.id as string);
+  if (!result) return res.status(404).json({ error: 'Chat not found' });
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No audio file provided' });
+  }
+
+  const { dirPath, chat } = result;
+  const ext = path.extname(req.file.originalname) || '.wav';
+  const cleanBase = sanitizeName(path.basename(req.file.originalname, ext));
+  const sampleName = `sample_${cleanBase}_${Date.now()}${ext}`;
+  const targetPath = path.join(dirPath, sampleName);
+
+  fs.writeFileSync(targetPath, req.file.buffer);
+
+  const audioUrl = `/api/audio/${chat.id}/${sampleName}`;
+  res.json({
+    success: true,
+    filename: sampleName,
+    originalName: req.file.originalname,
+    audioUrl,
+  });
 });
 
 app.get('/api/chats/:id', (req, res) => {

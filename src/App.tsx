@@ -12,6 +12,7 @@ import { ScrollingLyricsPage } from './pages/ScrollingLyricsPage';
 import { CodeEditorPage } from './pages/CodeEditorPage';
 import { StatsPage } from './pages/StatsPage';
 import { MusicVideoStudioPage } from './pages/MusicVideoStudioPage';
+import { BeatStudioPage } from './pages/BeatStudioPage';
 import { FloatingChatBox } from './components/FloatingChatBox';
 
 export const App: React.FC = () => {
@@ -39,6 +40,8 @@ export const App: React.FC = () => {
         return <StatsPage />;
       case 'video':
         return <MusicVideoStudioPage />;
+      case 'studio':
+        return <BeatStudioPage />;
       case 'settings':
         return <SettingsPage />;
       default:

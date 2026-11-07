@@ -62,6 +62,64 @@ export interface ChatSession {
   messages: ChatMessage[];
   takes: VocalTake[];
   coverArtUrl?: string;
+  studioArrangement?: StudioArrangement;
+  copiedFrom?: string;
+  coverOf?: string;
+}
+
+export interface StudioNote {
+  id: string;
+  pitch: string; // e.g. "C4", "G#3"
+  step: number; // 0 to 31 (1/16th notes within pattern)
+  durationSteps: number; // 1, 2, 4, 8...
+  velocity?: number; // 0 to 1
+}
+
+export interface StudioPattern {
+  id: string;
+  name: string;
+  type: 'drums' | 'notes';
+  instrument: string; // 'kick', 'snare', 'hihat', 'piano', 'bass', 'synth', etc.
+  steps?: boolean[]; // for step sequencer (e.g. 16 or 32 steps)
+  notes?: StudioNote[]; // for piano roll
+}
+
+export interface StudioClip {
+  id: string;
+  trackId: string;
+  patternId?: string;
+  name: string;
+  startBar: number; // 1-based bar number (e.g. 1, 5, 9)
+  durationBars: number; // e.g. 4 bars
+  color?: string;
+  audioUrl?: string; // for uploaded audio clips
+  audioFileName?: string;
+  audioDurationSec?: number;
+}
+
+export interface StudioTrack {
+  id: string;
+  name: string;
+  type: 'drums' | 'bass' | 'piano' | 'synth' | 'audio';
+  instrument: string;
+  volume: number; // 0 to 1
+  pan: number; // -1 to 1
+  isMuted: boolean;
+  isSolo: boolean;
+  color: string;
+}
+
+export interface StudioArrangement {
+  bpm: number;
+  key: string;
+  scale: string;
+  timeSignature: string;
+  totalBars: number;
+  tracks: StudioTrack[];
+  clips: StudioClip[];
+  patterns: Record<string, StudioPattern>;
+  copiedFrom?: string;
+  coverOf?: string;
 }
 
 export interface ActivityEvent {

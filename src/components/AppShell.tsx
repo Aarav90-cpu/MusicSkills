@@ -227,6 +227,22 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </button>
 
           <button
+            className={`btn ${route === 'studio' ? 'btn-tonal' : 'btn-text'}`}
+            onClick={() => setRoute('studio')}
+            style={{
+              width: '100%',
+              height: '48px',
+              justifyContent: isDrawerCollapsed ? 'center' : 'flex-start',
+              padding: isDrawerCollapsed ? '0' : '0 16px',
+              backgroundColor: route === 'studio' ? 'var(--color-primary-container)' : 'transparent',
+              color: route === 'studio' ? 'var(--color-on-primary-container)' : 'var(--color-text)',
+            }}
+          >
+            <span className="material-icons-round">graphic_eq</span>
+            {!isDrawerCollapsed && <span>Beat Studio (DAW)</span>}
+          </button>
+
+          <button
             className={`btn ${route === 'stats' ? 'btn-tonal' : 'btn-text'}`}
             onClick={() => setRoute('stats')}
             style={{
@@ -425,6 +441,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   ? 'Remotion Music Video Studio'
                   : route === 'lyrics'
                   ? 'Stage Lyrics & Syncer'
+                  : route === 'studio'
+                  ? 'Beat Studio (LMMS DAW)'
                   : 'MusicSkills Studio'}
               </span>
             )}

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { ChatSession, ActivityEvent, PlayerTrack } from '../types';
 import { webAudioPlayer } from '../utils/webAudioPlayer';
 
-export type AppRoute = 'welcome' | 'setup' | 'home' | 'chat' | 'vocals' | 'iterate' | 'settings' | 'lyrics' | 'code' | 'stats' | 'video';
+export type AppRoute = 'welcome' | 'setup' | 'home' | 'chat' | 'vocals' | 'iterate' | 'settings' | 'lyrics' | 'code' | 'stats' | 'video' | 'studio';
 
 interface AppContextType {
   route: AppRoute;

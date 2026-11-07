@@ -457,6 +457,45 @@ export const ChatCreationPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '32px 24px' }}>
+      {/* Switch to Beat Studio (DAW) Banner */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          padding: '12px 18px',
+          backgroundColor: 'var(--color-container)',
+          border: '1px solid var(--color-outline)',
+          borderRadius: 'var(--radius-lg)',
+          marginBottom: '28px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '24px' }}>
+            graphic_eq
+          </span>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text)' }}>
+              Want to arrange beats humanly without code?
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+              Open the LMMS-like Audio Studio to sequence drums, play piano, arrange clips, and set BPM with interactive UI.
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setRoute('studio')}
+          className="btn btn-primary"
+          style={{ height: '36px', padding: '0 14px', fontSize: '13px', gap: '6px' }}
+        >
+          <span className="material-icons-round" style={{ fontSize: '16px' }}>launch</span>
+          <span>Open Beat Studio (DAW)</span>
+        </button>
+      </div>
+
       {/* 5-STEPPER HEADER */}
       <div style={{ marginBottom: '40px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>

@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { listChats, getChat, createChat, saveChat, sanitizeName, getChatsDir, extractEmbeddedId3 } from '../server/chats';
+import { listChats, getChat, createChat, duplicateChat, saveChat, sanitizeName, getChatsDir, extractEmbeddedId3 } from '../server/chats';
 import { renderSong } from '../server/audio';
 import { loadConfig } from '../server/config';
 import { parseLyricsOutput, fetchLRCLibReference } from '../server/ai';
@@ -63,6 +63,7 @@ Commands:
   generate                    Compose MIDI arrangement, humanize, render MP3 audio, and save version
   add-lyrics, lyrics          Attach AI-written or baseline lyrics and calculate vocal timings
   cover, remix                Branch a section-specific cover or genre variation (e.g. Phonk drop)
+  duplicate, clone            Clone an existing project session or create a cover branch
   remotion, video             Generate or save reactive 3D Remotion video animation code
   list                        List all active studio projects and their version counts
   show                        Inspect detailed project metadata, lyrics, and assets
@@ -73,6 +74,8 @@ Commands:
 Options:
   --project-id, -p <id>       Target project ID (e.g. 7f3a9b)
   --name, -n, --title <str>   Song title (default: "Untitled Song")
+  --as-cover                  Branch duplication as a cover project
+  --no-audio                  Do not copy existing audio files during duplication
   --artist, -a <str>          Artist name override for lyrics publishing
   --album <str>               Album name override for lyrics publishing
   --duration <num>            Track duration in seconds
@@ -402,6 +405,47 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
           console.log(JSON.stringify({ success: true, projectId, version: versionLabel, midiFile: render.midiFile }, null, 2));
         } else {
           console.log(`[MusicSkills] Created cover variation for "${chat.name}" (${versionLabel})!`);
+        }
+        break;
+      }
+
+      case 'duplicate':
+      case 'clone': {
+        const sourceId = args.id || args['project-id'] || args.p || args._[1];
+        if (!sourceId) {
+          console.error('Error: --id or --project-id is required.');
+          process.exit(1);
+        }
+
+        const newChat = duplicateChat(sourceId, {
+          name: args.name || args.title,
+          asCover: Boolean(args['as-cover'] || args.cover),
+          genre: args.genre,
+          bpm: args.bpm ? parseInt(args.bpm, 10) : undefined,
+          coverInstruction: args.instruction,
+          includeAudio: args['no-audio'] ? false : true,
+        });
+
+        if (!newChat) {
+          console.error(`Error: Project "${sourceId}" not found.`);
+          process.exit(1);
+        }
+
+        if (args.json) {
+          console.log(JSON.stringify({
+            success: true,
+            id: newChat.id,
+            name: newChat.name,
+            copiedFrom: sourceId,
+            coverOf: newChat.coverOf,
+            folder: newChat.folderName,
+          }, null, 2));
+        } else {
+          console.log(`[MusicSkills] Successfully ${newChat.coverOf ? 'branched cover' : 'duplicated'} project:`);
+          console.log(`   ID:     ${newChat.id}`);
+          console.log(`   Name:   "${newChat.name}"`);
+          if (newChat.coverOf) console.log(`   Cover:  Cover of "${newChat.coverOf}"`);
+          console.log(`   Folder: .chats/${newChat.folderName}/`);
         }
         break;
       }
