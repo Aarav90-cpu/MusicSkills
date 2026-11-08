@@ -125,8 +125,10 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
       } else {
         onSelectClip(existingClip.id);
       }
-    } else if (activeTool === 'draw' || activeTool === 'pointer') {
+    } else if (activeTool === 'draw') {
       onAddClip(trackId, bar);
+    } else if (activeTool === 'pointer') {
+      onScrubPlayhead(bar);
     }
   };
 
@@ -453,6 +455,10 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
                       <div
                         key={barNum}
                         onClick={(e) => handleLaneClick(track.id, barNum, e)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          onAddClip(track.id, barNum);
+                        }}
                         style={{
                           width: `${BAR_WIDTH}px`,
                           flexShrink: 0,

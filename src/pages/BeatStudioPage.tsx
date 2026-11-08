@@ -111,6 +111,7 @@ export const BeatStudioPage: React.FC = () => {
   const mixerEngineRef = useRef<MixerEngine | null>(null);
   const historyRef = useRef<HistoryManager>(new HistoryManager());
   const playbackTimerRef = useRef<any>(null);
+  const recordingStartStepRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioNode[]>([]);
 
   // Initialize Mixer Engine with AudioContext
@@ -174,10 +175,12 @@ export const BeatStudioPage: React.FC = () => {
                   currentBarNum < c.startBar + c.durationBars
               );
 
+              const stepInClip = clip ? (currentBarNum - clip.startBar) * 16 + stepInBar : stepInBar;
+
               const newNote: DawNote = {
                 id: `rec_note_${Date.now()}_${midiNumber}`,
                 pitch,
-                step: stepInBar,
+                step: stepInClip,
                 durationSteps: 2,
                 velocity,
               };
@@ -434,7 +437,8 @@ export const BeatStudioPage: React.FC = () => {
 
         // MIDI Clip Notes Triggering
         if (clip.type === 'midi' && clip.notes) {
-          const notesOnStep = clip.notes.filter((n) => n.step === stepInBar);
+          const stepWithinClip = (currentBarNum - clip.startBar) * 16 + stepInBar;
+          const notesOnStep = clip.notes.filter((n) => n.step === stepWithinClip);
           notesOnStep.forEach((note) => {
             playMidiVoice(note, track.instrumentPreset || 'piano', channel.inputNode, audioTime);
           });
@@ -505,7 +509,7 @@ export const BeatStudioPage: React.FC = () => {
         setIsRecording(false);
 
         if (armedTrack) {
-          const recStartBar = Math.floor(currentStepIndex / 16) + 1;
+          const recStartBar = Math.floor(recordingStartStepRef.current / 16) + 1;
           const durBars = Math.max(1, Math.ceil(durationSec / (project.bpm / 60) / 4));
 
           const newClip: DawClip = {
@@ -540,6 +544,7 @@ export const BeatStudioPage: React.FC = () => {
 
       try {
         await dawSampleManager.startRecording();
+        recordingStartStepRef.current = currentStepIndex;
         setIsRecording(true);
         if (!isPlaying) startPlayback();
         showSnackbar(`Recording audio into "${armedTrack.name}"... Speak or sing into microphone.`);
@@ -631,10 +636,7 @@ export const BeatStudioPage: React.FC = () => {
       startBar: bar,
       durationBars: 4,
       color: track?.color,
-      notes: track?.type !== 'audio' ? [
-        { id: 'n1', pitch: 'C4', step: 0, durationSteps: 4, velocity: 0.8 },
-        { id: 'n2', pitch: 'G4', step: 4, durationSteps: 4, velocity: 0.8 },
-      ] : undefined,
+      notes: track?.type !== 'audio' ? [] : undefined,
     };
 
     setProject((prev) => ({ ...prev, clips: [...prev.clips, newClip] }));
@@ -1791,11 +1793,22 @@ export const BeatStudioPage: React.FC = () => {
             <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
               <PianoRoll
                 notes={activeMidiClip?.notes || []}
+                clipName={activeMidiClip?.name}
+                totalClipBars={activeMidiClip?.durationBars || 4}
+                availableClips={project.clips
+                  .filter((c) => c.type === 'midi')
+                  .map((c) => ({
+                    id: c.id,
+                    name: c.name,
+                    trackName: project.tracks.find((t) => t.id === c.trackId)?.name,
+                  }))}
+                selectedClipId={activeMidiClip?.id}
+                onSelectClipId={(id) => {
+                  setSelectedClipId(id);
+                  const targetClip = project.clips.find((c) => c.id === id);
+                  if (targetClip) setSelectedTrackId(targetClip.trackId);
+                }}
                 onAddNote={(note) => {
-                  if (!activeMidiClip) {
-                    handleAddClip(selectedTrackId || project.tracks[1].id, 1);
-                    return;
-                  }
                   const dawNote: DawNote = {
                     id: note.id,
                     pitch: note.pitch,
@@ -1803,11 +1816,46 @@ export const BeatStudioPage: React.FC = () => {
                     durationSteps: note.durationSteps,
                     velocity: note.velocity ?? 0.8,
                   };
+
+                  if (!activeMidiClip) {
+                    const targetTrackId =
+                      selectedTrackId ||
+                      project.tracks.find((t) => t.type !== 'audio')?.id ||
+                      project.tracks[0].id;
+                    const targetTrack = project.tracks.find((t) => t.id === targetTrackId);
+                    const newClip: DawClip = {
+                      id: `clip_midi_${Date.now()}`,
+                      trackId: targetTrackId,
+                      name: `${targetTrack?.name || 'Instrument'} Pattern`,
+                      type: 'midi',
+                      startBar: 1,
+                      durationBars: 4,
+                      color: targetTrack?.color || '#8B78FF',
+                      notes: [dawNote],
+                    };
+                    setProject((prev) => ({
+                      ...prev,
+                      clips: [...prev.clips, newClip],
+                    }));
+                    setSelectedClipId(newClip.id);
+                    setSelectedTrackId(targetTrackId);
+                    setIsDirty(true);
+                    return;
+                  }
+
                   setProject((prev) => ({
                     ...prev,
                     clips: prev.clips.map((c) =>
                       c.id === activeMidiClip.id
-                        ? { ...c, notes: [...(c.notes || []).filter((n) => !(n.pitch === note.pitch && n.step === note.step)), dawNote] }
+                        ? {
+                            ...c,
+                            notes: [
+                              ...(c.notes || []).filter(
+                                (n) => !(n.pitch === note.pitch && n.step === note.step)
+                              ),
+                              dawNote,
+                            ],
+                          }
                         : c
                     ),
                   }));

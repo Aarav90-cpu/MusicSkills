@@ -5,7 +5,7 @@
  * Strictly zero-emoji.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { dawAudioEngine } from '../../utils/dawAudioEngine';
 import { BEAT_PRESETS, BeatPreset } from '../../utils/beatPresets';
 
@@ -97,6 +97,30 @@ export const DawStepSequencer: React.FC<DawStepSequencerProps> = ({
   const [commitBar, setCommitBar] = useState<number>(currentPlayheadBar);
 
   const activeStep = currentStepIndex % 16;
+  const lastPlayedStepRef = useRef<number>(-1);
+
+  // Live rhythm playback synchronized with master transport
+  useEffect(() => {
+    if (!isPlaying) {
+      lastPlayedStepRef.current = -1;
+      return;
+    }
+
+    const stepIn16 = currentStepIndex % 16;
+    if (stepIn16 === lastPlayedStepRef.current) return;
+    lastPlayedStepRef.current = stepIn16;
+
+    const anySoloed = voices.some((v) => v.isSolo);
+
+    voices.forEach((voice) => {
+      if (anySoloed && !voice.isSolo) return;
+      if (voice.isMuted) return;
+
+      if (voice.steps[stepIn16]) {
+        handleAudition(voice.id);
+      }
+    });
+  }, [isPlaying, currentStepIndex, voices]);
 
   // Audition voice sound immediately
   const handleAudition = (voiceId: string) => {

@@ -1,4 +1,11 @@
-import React, { useState } from 'react';
+/**
+ * MusicSkills - Professional Melodic Piano Roll Editor
+ * Desktop DAW piano roll with chromatic pitch grid across 5 octaves,
+ * chord stamping, multi-bar pattern navigation, auditioning, and synth preset routing.
+ * Strictly zero-emoji.
+ */
+
+import React, { useState, useEffect } from 'react';
 import { StudioNote } from '../../types';
 import { dawSynthEngine, SYNTH_PRESETS } from '../../utils/daw/synthEngine';
 
@@ -13,13 +20,21 @@ interface PianoRollProps {
   songScale: string;
   currentStepIndex: number;
   isPlaying: boolean;
+  clipName?: string;
+  totalClipBars?: number;
+  availableClips?: Array<{ id: string; name: string; trackName?: string }>;
+  selectedClipId?: string;
+  onSelectClipId?: (id: string) => void;
 }
 
-// 2 Octaves of Chromatic Pitches from C5 down to C3
-const PITCHES = [
-  'C5', 'B4', 'A#4', 'A4', 'G#4', 'G4', 'F#4', 'F4', 'E4', 'D#4', 'D4', 'C#4',
-  'C4', 'B3', 'A#3', 'A3', 'G#3', 'G3', 'F#3', 'F3', 'E3', 'D#3', 'D3', 'C#3', 'C3',
-];
+// Generate 5 Octaves of Chromatic Pitches from C6 down to C1 (72 chromatic notes)
+const NOTE_NAMES = ['B', 'A#', 'A', 'G#', 'G', 'F#', 'F', 'E', 'D#', 'D', 'C#', 'C'];
+const GENERATED_PITCHES: string[] = [];
+for (let oct = 6; oct >= 1; oct--) {
+  NOTE_NAMES.forEach((name) => {
+    GENERATED_PITCHES.push(`${name}${oct}`);
+  });
+}
 
 const CHORD_PRESETS = [
   { label: 'Major Chord', intervals: [0, 4, 7] },
@@ -27,6 +42,7 @@ const CHORD_PRESETS = [
   { label: 'Major 7th', intervals: [0, 4, 7, 11] },
   { label: 'Minor 7th', intervals: [0, 3, 7, 10] },
   { label: 'Sus4 Chord', intervals: [0, 5, 7] },
+  { label: '5th Power Chord', intervals: [0, 7] },
 ];
 
 export const PianoRoll: React.FC<PianoRollProps> = ({
@@ -40,37 +56,62 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   songScale,
   currentStepIndex,
   isPlaying,
+  clipName = 'MIDI Clip',
+  totalClipBars = 4,
+  availableClips = [],
+  selectedClipId,
+  onSelectClipId,
 }) => {
-  const [selectedDuration, setSelectedDuration] = useState<number>(2); // Default 2 steps (8th note)
+  const [selectedDuration, setSelectedDuration] = useState<number>(2); // 2 steps (8th note)
   const [stampChordType, setStampChordType] = useState<string>('none');
+  const [octaveRange, setOctaveRange] = useState<'bass' | 'mid' | 'high' | 'all'>(
+    instrument === 'bass' ? 'bass' : 'mid'
+  );
+  const [currentBarPage, setCurrentBarPage] = useState<number>(1);
+  const [viewMode, setViewMode] = useState<'paged' | 'full'>('paged');
+
+  // Sync default octave range if instrument changes to bass
+  useEffect(() => {
+    if (instrument === 'bass') {
+      setOctaveRange('bass');
+    }
+  }, [instrument]);
+
+  // Filter pitches based on octave range
+  const visiblePitches = GENERATED_PITCHES.filter((p) => {
+    const oct = parseInt(p.slice(-1), 10);
+    if (octaveRange === 'bass') return oct >= 1 && oct <= 3;
+    if (octaveRange === 'mid') return oct >= 3 && oct <= 5;
+    if (octaveRange === 'high') return oct >= 4 && oct <= 6;
+    return true; // 'all'
+  });
 
   const playPitchSound = (pitch: string, durSteps = 2) => {
     const durSec = durSteps * 0.125;
     dawSynthEngine.playNote(pitch, durSec, 0.8, instrument);
   };
 
-  const handleCellClick = (pitch: string, step: number) => {
+  const handleCellClick = (pitch: string, absoluteStep: number) => {
     // Check if a note already exists at this pitch and step
-    const existing = notes.find(n => n.pitch === pitch && n.step === step);
+    const existing = notes.find((n) => n.pitch === pitch && n.step === absoluteStep);
     if (existing) {
       onRemoveNote(existing.id);
       return;
     }
 
     if (stampChordType !== 'none') {
-      const preset = CHORD_PRESETS.find(p => p.label === stampChordType);
+      const preset = CHORD_PRESETS.find((p) => p.label === stampChordType);
       if (preset) {
-        const rootIndex = PITCHES.indexOf(pitch);
+        const rootIndex = visiblePitches.indexOf(pitch);
         if (rootIndex !== -1) {
           preset.intervals.forEach((interval, idx) => {
-            // Lower row index corresponds to higher pitch in our inverted array
             const targetRow = rootIndex - interval;
-            if (targetRow >= 0 && targetRow < PITCHES.length) {
-              const chordPitch = PITCHES[targetRow];
+            if (targetRow >= 0 && targetRow < visiblePitches.length) {
+              const chordPitch = visiblePitches[targetRow];
               onAddNote({
-                id: `note_${chordPitch}_${step}_${Date.now()}_${idx}`,
+                id: `note_${chordPitch}_${absoluteStep}_${Date.now()}_${idx}`,
                 pitch: chordPitch,
-                step,
+                step: absoluteStep,
                 durationSteps: selectedDuration,
                 velocity: 0.8,
               });
@@ -82,46 +123,100 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       }
     }
 
-    // Place single note
+    // Single note placement
     playPitchSound(pitch, selectedDuration);
     onAddNote({
-      id: `note_${pitch}_${step}_${Date.now()}`,
+      id: `note_${pitch}_${absoluteStep}_${Date.now()}`,
       pitch,
-      step,
+      step: absoluteStep,
       durationSteps: selectedDuration,
       velocity: 0.8,
     });
   };
 
+  // Determine step columns to display
+  const barsCount = Math.max(1, totalClipBars);
+  const totalSteps = barsCount * 16;
+  const startStep = viewMode === 'paged' ? (currentBarPage - 1) * 16 : 0;
+  const displayStepCount = viewMode === 'paged' ? 16 : totalSteps;
+
   return (
     <div
       style={{
-        backgroundColor: 'var(--color-surface)',
-        border: '1px solid var(--color-outline)',
-        borderRadius: 'var(--radius-lg)',
-        padding: '18px',
+        backgroundColor: '#17191E',
+        border: '1px solid #252932',
+        borderRadius: '8px',
+        padding: '16px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '14px',
-        overflowX: 'auto',
+        gap: '12px',
+        userSelect: 'none',
       }}
     >
-      {/* Piano Roll Header & Tools */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+      {/* 1. Header Toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          borderBottom: '1px solid #22252C',
+          paddingBottom: '12px',
+        }}
+      >
+        {/* Left: Title & Clip Info */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className="material-icons-round" style={{ color: 'var(--color-primary)', fontSize: '20px' }}>
+          <span className="material-icons-round" style={{ color: '#8B78FF', fontSize: '20px' }}>
             piano
           </span>
-          <span style={{ fontWeight: 700, fontSize: '15px', letterSpacing: '-0.01em' }}>
-            Piano Roll (LMMS Melodic Note Editor)
+          <span style={{ fontWeight: 700, fontSize: '14px', color: '#F3F4F6' }}>
+            Piano Roll Note Editor
           </span>
+
+          {availableClips.length > 1 && onSelectClipId ? (
+            <select
+              value={selectedClipId}
+              onChange={(e) => onSelectClipId(e.target.value)}
+              style={{
+                height: '24px',
+                fontSize: '11px',
+                backgroundColor: '#111216',
+                border: '1px solid #3F4452',
+                color: '#8B78FF',
+                fontWeight: 600,
+                borderRadius: '4px',
+                padding: '0 6px',
+              }}
+            >
+              {availableClips.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} {c.trackName ? `(${c.trackName})` : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span
+              style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                backgroundColor: '#252932',
+                borderRadius: '4px',
+                color: '#8B78FF',
+                fontWeight: 600,
+              }}
+            >
+              {clipName} ({barsCount} bars)
+            </span>
+          )}
+
           <span
             style={{
               fontSize: '11px',
               padding: '2px 8px',
-              backgroundColor: 'var(--color-container)',
-              borderRadius: 'var(--radius-full)',
-              color: 'var(--color-text-secondary)',
+              backgroundColor: '#1F232C',
+              borderRadius: '4px',
+              color: '#9CA3AF',
               fontWeight: 600,
             }}
           >
@@ -129,18 +224,25 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
           </span>
         </div>
 
-        {/* Instrument & Tool Selectors */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Instrument Select */}
+        {/* Right: Controls & Presets */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Sound Preset */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Sound:</span>
+            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>Sound:</span>
             <select
-              className="input-field"
               value={instrument}
-              onChange={e => onChangeInstrument(e.target.value)}
-              style={{ height: '32px', fontSize: '12px', padding: '0 8px', cursor: 'pointer' }}
+              onChange={(e) => onChangeInstrument(e.target.value)}
+              style={{
+                height: '26px',
+                fontSize: '11px',
+                backgroundColor: '#111216',
+                border: '1px solid #2D3139',
+                borderRadius: '4px',
+                color: '#F3F4F6',
+                padding: '0 6px',
+              }}
             >
-              {Object.values(SYNTH_PRESETS).map(p => (
+              {Object.values(SYNTH_PRESETS).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
@@ -148,33 +250,71 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
             </select>
           </div>
 
-          {/* Note Length Select */}
+          {/* Octave Range Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Note Length:</span>
+            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>Octave:</span>
             <select
-              className="input-field"
-              value={selectedDuration}
-              onChange={e => setSelectedDuration(parseInt(e.target.value, 10))}
-              style={{ height: '32px', fontSize: '12px', padding: '0 8px', cursor: 'pointer' }}
+              value={octaveRange}
+              onChange={(e) => setOctaveRange(e.target.value as any)}
+              style={{
+                height: '26px',
+                fontSize: '11px',
+                backgroundColor: '#111216',
+                border: '1px solid #2D3139',
+                borderRadius: '4px',
+                color: '#F3F4F6',
+                padding: '0 6px',
+              }}
             >
-              <option value={1}>1/16 Note (1 step)</option>
-              <option value={2}>1/8 Note (2 steps)</option>
-              <option value={4}>1/4 Note (1 beat)</option>
-              <option value={8}>1/2 Note (2 beats)</option>
+              <option value="bass">Bass (C1 - C3)</option>
+              <option value="mid">Mid / Chords (C3 - C5)</option>
+              <option value="high">High / Lead (C4 - C6)</option>
+              <option value="all">Full Range (C1 - C6)</option>
             </select>
           </div>
 
-          {/* Chord Stamper Tool */}
+          {/* Note Duration */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Chord Stamp:</span>
+            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>Length:</span>
             <select
-              className="input-field"
+              value={selectedDuration}
+              onChange={(e) => setSelectedDuration(parseInt(e.target.value, 10))}
+              style={{
+                height: '26px',
+                fontSize: '11px',
+                backgroundColor: '#111216',
+                border: '1px solid #2D3139',
+                borderRadius: '4px',
+                color: '#F3F4F6',
+                padding: '0 6px',
+              }}
+            >
+              <option value={1}>1/16 Note</option>
+              <option value={2}>1/8 Note</option>
+              <option value={4}>1/4 Note (Beat)</option>
+              <option value={8}>1/2 Note</option>
+              <option value={16}>1 Bar</option>
+            </select>
+          </div>
+
+          {/* Chord Stamper */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>Chord:</span>
+            <select
               value={stampChordType}
-              onChange={e => setStampChordType(e.target.value)}
-              style={{ height: '32px', fontSize: '12px', padding: '0 8px', cursor: 'pointer' }}
+              onChange={(e) => setStampChordType(e.target.value)}
+              style={{
+                height: '26px',
+                fontSize: '11px',
+                backgroundColor: '#111216',
+                border: '1px solid #2D3139',
+                borderRadius: '4px',
+                color: '#F3F4F6',
+                padding: '0 6px',
+              }}
             >
               <option value="none">Single Note</option>
-              {CHORD_PRESETS.map(chord => (
+              {CHORD_PRESETS.map((chord) => (
                 <option key={chord.label} value={chord.label}>
                   {chord.label}
                 </option>
@@ -184,29 +324,107 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
           {/* Clear Notes */}
           <button
-            className="btn btn-outlined"
             onClick={onClearNotes}
-            style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
+            style={{
+              height: '26px',
+              padding: '0 8px',
+              backgroundColor: '#252932',
+              border: '1px solid #3F4452',
+              borderRadius: '4px',
+              color: '#F3F4F6',
+              fontSize: '11px',
+              cursor: 'pointer',
+            }}
             title="Clear all notes in pattern"
           >
-            Clear Pattern
+            Clear
           </button>
         </div>
       </div>
 
-      {/* Piano Roll Grid View */}
+      {/* 2. Bar Page Navigation (When clip is multi-bar) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: '#14161B',
+          padding: '6px 10px',
+          borderRadius: '4px',
+          border: '1px solid #252932',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: 600 }}>Viewing Bar:</span>
+          {Array.from({ length: barsCount }).map((_, idx) => {
+            const barNum = idx + 1;
+            const isSelected = viewMode === 'paged' && currentBarPage === barNum;
+            const currentPlayheadBar = Math.floor(currentStepIndex / 16) + 1;
+            const isPlayingThisBar = isPlaying && currentPlayheadBar === barNum;
+
+            return (
+              <button
+                key={barNum}
+                onClick={() => {
+                  setViewMode('paged');
+                  setCurrentBarPage(barNum);
+                }}
+                style={{
+                  height: '22px',
+                  padding: '0 8px',
+                  backgroundColor: isSelected ? '#8B78FF' : '#1F232C',
+                  border: isPlayingThisBar ? '1px solid #35C9A5' : '1px solid #2D3139',
+                  borderRadius: '3px',
+                  color: isSelected ? '#FFFFFF' : '#9CA3AF',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Bar {barNum} {isPlayingThisBar ? '(Live)' : ''}
+              </button>
+            );
+          })}
+
+          <button
+            onClick={() => setViewMode(viewMode === 'full' ? 'paged' : 'full')}
+            style={{
+              height: '22px',
+              padding: '0 8px',
+              backgroundColor: viewMode === 'full' ? '#35C9A5' : '#1F232C',
+              border: '1px solid #2D3139',
+              borderRadius: '3px',
+              color: viewMode === 'full' ? '#101114' : '#9CA3AF',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              marginLeft: '4px',
+            }}
+          >
+            {viewMode === 'full' ? 'Showing All Bars' : 'Show All Bars'}
+          </button>
+        </div>
+
+        <div style={{ fontSize: '10px', color: '#697180' }}>
+          {notes.length} total note{notes.length === 1 ? '' : 's'} in clip
+        </div>
+      </div>
+
+      {/* 3. Piano Roll Grid Area */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '360px',
+          maxHeight: '440px',
           overflowY: 'auto',
-          border: '1px solid var(--color-outline)',
-          borderRadius: '8px',
+          overflowX: 'auto',
+          border: '1px solid #252932',
+          borderRadius: '6px',
+          backgroundColor: '#101114',
         }}
       >
-        {PITCHES.map(pitch => {
-          const isAccidental = pitch.includes('#') || pitch.includes('b');
+        {visiblePitches.map((pitch) => {
+          const isAccidental = pitch.includes('#');
           const isRootKey = pitch.startsWith(songKey);
 
           return (
@@ -214,7 +432,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
               key={pitch}
               style={{
                 display: 'flex',
-                height: '24px',
+                height: '22px',
                 borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
               }}
             >
@@ -222,57 +440,67 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
               <button
                 onClick={() => playPitchSound(pitch, 2)}
                 style={{
-                  width: '64px',
+                  width: '60px',
                   flexShrink: 0,
                   height: '100%',
-                  backgroundColor: isAccidental ? '#1e1c26' : '#2b2938',
-                  color: isRootKey ? 'var(--color-primary)' : isAccidental ? '#9e9e9e' : '#e0e0e0',
+                  backgroundColor: isAccidental ? '#17191E' : '#22252C',
+                  color: isRootKey ? '#8B78FF' : isAccidental ? '#9CA3AF' : '#F3F4F6',
                   border: 'none',
-                  borderRight: isRootKey ? '2px solid var(--color-primary)' : '1px solid var(--color-outline)',
+                  borderRight: isRootKey ? '2px solid #8B78FF' : '1px solid #2D3139',
                   textAlign: 'right',
                   paddingRight: '6px',
                   fontSize: '10px',
-                  fontWeight: isRootKey ? 700 : 500,
+                  fontWeight: isRootKey ? 800 : 500,
                   cursor: 'pointer',
                   userSelect: 'none',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 2,
                 }}
-                title={`Click to play ${pitch}`}
+                title={`Click to audition ${pitch}`}
               >
                 {pitch}
               </button>
 
-              {/* 16 Step Grid Cells */}
-              <div style={{ display: 'flex', flex: 1 }}>
-                {Array.from({ length: 16 }).map((_, stepIdx) => {
-                  const isCurrent = isPlaying && currentStepIndex % 16 === stepIdx;
-                  const isBeatStart = stepIdx % 4 === 0;
+              {/* Step Grid Cells */}
+              <div style={{ display: 'flex', flex: 1, minWidth: viewMode === 'full' ? `${totalSteps * 28}px` : 'auto' }}>
+                {Array.from({ length: displayStepCount }).map((_, colIdx) => {
+                  const absoluteStep = startStep + colIdx;
+                  const isCurrent = isPlaying && currentStepIndex === absoluteStep;
+                  const isBeatStart = absoluteStep % 4 === 0;
+                  const isBarStart = absoluteStep % 16 === 0;
 
-                  // Find note starting at or covering this cell
+                  // Find note covering this step
                   const note = notes.find(
-                    n => n.pitch === pitch && stepIdx >= n.step && stepIdx < n.step + n.durationSteps
+                    (n) => n.pitch === pitch && absoluteStep >= n.step && absoluteStep < n.step + n.durationSteps
                   );
-                  const isNoteStart = note && note.step === stepIdx;
+                  const isNoteStart = note && note.step === absoluteStep;
 
                   return (
                     <div
-                      key={stepIdx}
-                      onClick={() => handleCellClick(pitch, stepIdx)}
+                      key={colIdx}
+                      onClick={() => handleCellClick(pitch, absoluteStep)}
                       style={{
-                        flex: 1,
+                        flex: viewMode === 'paged' ? 1 : 'none',
+                        width: viewMode === 'full' ? '28px' : 'auto',
                         height: '100%',
-                        borderRight: isBeatStart ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid rgba(255, 255, 255, 0.03)',
+                        borderRight: isBarStart
+                          ? '1px solid rgba(255, 255, 255, 0.2)'
+                          : isBeatStart
+                          ? '1px solid rgba(255, 255, 255, 0.08)'
+                          : '1px solid rgba(255, 255, 255, 0.02)',
                         backgroundColor: note
-                          ? 'var(--color-primary)'
+                          ? '#8B78FF'
                           : isCurrent
-                          ? 'rgba(124, 77, 255, 0.15)'
+                          ? 'rgba(139, 120, 255, 0.25)'
                           : isAccidental
-                          ? 'rgba(0, 0, 0, 0.25)'
+                          ? 'rgba(0, 0, 0, 0.3)'
                           : 'transparent',
                         cursor: 'pointer',
                         position: 'relative',
-                        boxShadow: note && isNoteStart ? '0 0 6px rgba(124, 77, 255, 0.6)' : 'none',
+                        boxShadow: note && isNoteStart ? '0 0 6px rgba(139, 120, 255, 0.8)' : 'none',
                       }}
-                      title={`${pitch} at step ${stepIdx + 1}`}
+                      title={`${pitch} (Bar ${Math.floor(absoluteStep / 16) + 1}, Beat ${Math.floor((absoluteStep % 16) / 4) + 1}, Step ${(absoluteStep % 4) + 1})`}
                     >
                       {note && isNoteStart && (
                         <div
@@ -282,7 +510,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
                             top: '2px',
                             bottom: '2px',
                             right: '2px',
-                            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                            backgroundColor: 'rgba(255, 255, 255, 0.25)',
                             borderRadius: '2px',
                           }}
                         />
@@ -298,4 +526,3 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     </div>
   );
 };
-

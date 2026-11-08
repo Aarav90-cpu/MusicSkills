@@ -504,3 +504,4 @@ export const DawOpenProjectModal: React.FC<DawOpenProjectModalProps> = ({
     </div>
   );
 };
+

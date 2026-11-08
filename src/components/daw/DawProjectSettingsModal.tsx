@@ -329,3 +329,4 @@ export const DawProjectSettingsModal: React.FC<DawProjectSettingsModalProps> = (
     </div>
   );
 };
+
