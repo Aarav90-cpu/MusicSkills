@@ -103,7 +103,7 @@ export const DawEffectsModal: React.FC<DawEffectsModalProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span className="material-icons-round" style={{ color: '#8B78FF', fontSize: '18px' }}>tune</span>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#F3F4F6' }}>
-              Insert Effects Rack · {channelName}
+              Insert Effects Rack - {channelName}
             </span>
           </div>
 
@@ -138,7 +138,7 @@ export const DawEffectsModal: React.FC<DawEffectsModalProps> = ({
                 cursor: 'pointer',
               }}
             >
-              {tab.label} {!tab.bypassed ? '●' : ''}
+              {tab.label} {!tab.bypassed ? '[ON]' : ''}
             </button>
           ))}
         </div>

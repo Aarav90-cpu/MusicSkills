@@ -48,7 +48,7 @@ export const DawAboutModal: React.FC<DawAboutModalProps> = ({ isOpen, onClose, s
               MusicSkills DAW Studio
             </h3>
             <span style={{ fontSize: '11px', color: '#8B78FF', fontWeight: 600 }}>
-              Studio Edition
+              Version 2.4.0 (Desktop Studio Edition)
             </span>
           </div>
           <button

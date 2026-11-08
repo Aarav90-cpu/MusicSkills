@@ -20,6 +20,7 @@ interface DawBrowserSidebarProps {
   currentPlayheadBar: number;
   onApplyBeatPreset?: (preset: BeatPreset) => void;
   onOpenCoverModal?: () => void;
+  onDuplicateProject?: (sourceChatId: string, asCover: boolean, customName?: string) => Promise<void>;
 }
 
 export const DawBrowserSidebar: React.FC<DawBrowserSidebarProps> = ({
@@ -29,6 +30,7 @@ export const DawBrowserSidebar: React.FC<DawBrowserSidebarProps> = ({
   currentPlayheadBar,
   onApplyBeatPreset,
   onOpenCoverModal,
+  onDuplicateProject,
 }) => {
   const { chats, playTrack } = useApp();
   const [activeTab, setActiveTab] = useState<'samples' | 'beats' | 'covers'>('samples');
@@ -784,24 +786,81 @@ export const DawBrowserSidebar: React.FC<DawBrowserSidebarProps> = ({
                   </div>
 
                   <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
-                    {onOpenCoverModal && (
-                      <button
-                        onClick={onOpenCoverModal}
-                        style={{
-                          flex: 1,
-                          padding: '4px',
-                          backgroundColor: '#252932',
-                          border: 'none',
-                          borderRadius: '4px',
-                          color: '#F5C451',
-                          fontSize: '10px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                        title="Use chords, structure and tempo to build a cover"
-                      >
-                        Use as Cover
-                      </button>
+                    {onDuplicateProject ? (
+                      <>
+                        <button
+                          onClick={() => onDuplicateProject(chat.id, true)}
+                          style={{
+                            flex: 1,
+                            padding: '4px',
+                            backgroundColor: '#252932',
+                            border: 'none',
+                            borderRadius: '4px',
+                            color: '#F5C451',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          title="Create cover version with tempo and chords"
+                        >
+                          Cover
+                        </button>
+                        <button
+                          onClick={() => onDuplicateProject(chat.id, false)}
+                          style={{
+                            flex: 1,
+                            padding: '4px',
+                            backgroundColor: '#252932',
+                            border: 'none',
+                            borderRadius: '4px',
+                            color: '#35C9A5',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          title="Clone project duplicate with all tracks"
+                        >
+                          Clone
+                        </button>
+                        {onOpenCoverModal && (
+                          <button
+                            onClick={onOpenCoverModal}
+                            style={{
+                              padding: '4px 6px',
+                              backgroundColor: '#1D2027',
+                              border: '1px solid #323744',
+                              borderRadius: '4px',
+                              color: '#9CA3AF',
+                              fontSize: '10px',
+                              fontWeight: 500,
+                              cursor: 'pointer',
+                            }}
+                            title="Open full Cover & Duplication dialog"
+                          >
+                            ...
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      onOpenCoverModal && (
+                        <button
+                          onClick={onOpenCoverModal}
+                          style={{
+                            flex: 1,
+                            padding: '4px',
+                            backgroundColor: '#252932',
+                            border: 'none',
+                            borderRadius: '4px',
+                            color: '#F5C451',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          title="Use chords, structure and tempo to build a cover"
+                        >
+                          Use as Cover
+                        </button>
+                      )
                     )}
                   </div>
                 </div>

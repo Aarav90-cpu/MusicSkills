@@ -27,12 +27,21 @@ export const DawShortcutsModal: React.FC<DawShortcutsModalProps> = ({ isOpen, on
     {
       category: 'Arrangement Tools',
       shortcuts: [
-        { key: 'Pointer', desc: 'Default selection, clip drag and resize' },
-        { key: 'S', desc: 'Split tool: Slice clip at playhead or click' },
-        { key: 'D', desc: 'Draw tool: Insert new clip at lane position' },
-        { key: 'E', desc: 'Erase tool: Delete clip on click' },
-        { key: 'M (in lane)', desc: 'Mute tool: Toggle clip active status' },
+        { key: '1', desc: 'Pointer tool: Selection, clip drag and resize' },
+        { key: '2', desc: 'Draw tool: Insert new clip at lane position' },
+        { key: '3', desc: 'Erase tool: Delete clip on click' },
+        { key: '4', desc: 'Split tool: Slice clip at playhead or click' },
+        { key: '5', desc: 'Mute tool: Toggle clip active status' },
         { key: 'Q', desc: 'Quantize: Snap notes in active clip to grid' },
+      ],
+    },
+    {
+      category: 'Musical Typing (Computer Keyboard MIDI)',
+      shortcuts: [
+        { key: 'A, W, S, E, D, F, T...', desc: 'Play chromatic piano/synth notes' },
+        { key: 'Z / X', desc: 'Shift keyboard octave down / up' },
+        { key: 'KB MIDI button', desc: 'Enable / disable musical typing mode' },
+        { key: 'Record (R)', desc: 'Record notes into armed track timeline' },
       ],
     },
     {

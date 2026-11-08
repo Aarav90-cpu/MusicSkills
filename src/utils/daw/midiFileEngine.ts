@@ -288,7 +288,7 @@ export function parseMidiFile(buffer: ArrayBuffer): Array<{ name: string; notes:
             finishedNotes.push({
               id: `imported_note_${t}_${finishedNotes.length}`,
               pitch: active.pitch,
-              step: startStep % 16,
+              step: startStep,
               durationSteps,
               velocity: active.velocity,
             });
@@ -307,7 +307,7 @@ export function parseMidiFile(buffer: ArrayBuffer): Array<{ name: string; notes:
           finishedNotes.push({
             id: `imported_note_${t}_${finishedNotes.length}`,
             pitch: active.pitch,
-            step: startStep % 16,
+            step: startStep,
             durationSteps,
             velocity: active.velocity,
           });

@@ -48,18 +48,18 @@ export const DawStatusBar: React.FC<DawStatusBarProps> = ({
           </span>
         </div>
 
-        <span>·</span>
+        <span>/</span>
         <span>{(sampleRate / 1000).toFixed(1)} kHz</span>
-        <span>·</span>
+        <span>/</span>
         <span>256 Samples (~5.8ms)</span>
       </div>
 
       {/* Right: Project Stats & Autosave */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <span>{tracksCount} Tracks</span>
-        <span>·</span>
+        <span>/</span>
         <span>{clipsCount} Clips</span>
-        <span>·</span>
+        <span>/</span>
         <span style={{ color: '#9CA3AF' }}>Autosaved: {lastSavedAt || 'Ready'}</span>
       </div>
     </footer>

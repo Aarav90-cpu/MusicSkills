@@ -16,6 +16,9 @@ export interface StepSequencerVoiceState {
   steps: boolean[];
   isMuted: boolean;
   isSolo: boolean;
+  volumeDb?: number;
+  pan?: number;
+  pitch?: string;
 }
 
 interface DawStepSequencerProps {
@@ -127,32 +130,36 @@ export const DawStepSequencer: React.FC<DawStepSequencerProps> = ({
     });
   }, [isPlaying, currentStepIndex, voices]);
 
-  // Audition voice sound immediately
+  // Audition voice sound immediately with user volume and pitch
   const handleAudition = (voiceId: string) => {
+    const v = voices.find((voice) => voice.id === voiceId);
+    const vel = v ? Math.max(0.05, Math.min(1.0, Math.pow(10, (v.volumeDb ?? 0) / 20))) : 0.85;
+    const pitch = v?.pitch || 'C2';
+
     switch (voiceId) {
       case 'kick':
-        dawAudioEngine.playKick();
+        dawAudioEngine.playKick(undefined, vel);
         break;
       case 'snare':
-        dawAudioEngine.playSnare();
+        dawAudioEngine.playSnare(undefined, vel);
         break;
       case 'hihatClosed':
-        dawAudioEngine.playHiHatClosed();
+        dawAudioEngine.playHiHatClosed(undefined, vel);
         break;
       case 'hihatOpen':
-        dawAudioEngine.playHiHatOpen();
+        dawAudioEngine.playHiHatOpen(undefined, vel);
         break;
       case 'clap':
-        dawAudioEngine.playClap();
+        dawAudioEngine.playClap(undefined, vel);
         break;
       case 'sub808':
-        dawAudioEngine.play808Sub();
+        dawAudioEngine.play808Sub(undefined, pitch, 0.5, vel);
         break;
       case 'perc':
-        dawAudioEngine.playPerc();
+        dawAudioEngine.playPerc(undefined, vel);
         break;
       default:
-        dawAudioEngine.playKick();
+        dawAudioEngine.playKick(undefined, vel);
     }
   };
 

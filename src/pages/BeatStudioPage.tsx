@@ -875,7 +875,16 @@ export const BeatStudioPage: React.FC = () => {
       notes: track?.type !== 'audio' ? [] : undefined,
     };
 
-    setProject((prev) => ({ ...prev, clips: [...prev.clips, newClip] }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = { ...project, clips: [...project.clips, newClip] };
+
+    historyRef.current.pushAction({
+      description: `Add Clip "${newClip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setSelectedClipId(newClip.id);
     setIsDirty(true);
   };
@@ -884,7 +893,16 @@ export const BeatStudioPage: React.FC = () => {
     const clip = project.clips.find((c) => c.id === clipId);
     if (!clip) return;
 
-    setProject((prev) => ({ ...prev, clips: prev.clips.filter((c) => c.id !== clipId) }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = { ...project, clips: project.clips.filter((c) => c.id !== clipId) };
+
+    historyRef.current.pushAction({
+      description: `Delete Clip "${clip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     if (selectedClipId === clipId) setSelectedClipId(null);
     setIsDirty(true);
   };
@@ -903,12 +921,19 @@ export const BeatStudioPage: React.FC = () => {
       durationBars: secondDuration,
     };
 
-    setProject((prev) => ({
-      ...prev,
-      clips: prev.clips
-        .map((c) => (c.id === clipId ? { ...c, durationBars: firstDuration } : c))
-        .concat(secondClip),
-    }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextClips = project.clips
+      .map((c) => (c.id === clipId ? { ...c, durationBars: firstDuration } : c))
+      .concat(secondClip);
+    const nextProject = { ...project, clips: nextClips };
+
+    historyRef.current.pushAction({
+      description: `Split Clip "${clip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setIsDirty(true);
     showSnackbar(`Split clip "${clip.name}" at Bar ${splitBar}`);
   };
@@ -928,10 +953,19 @@ export const BeatStudioPage: React.FC = () => {
     const normalized = dawSampleManager.normalizeBuffer(clip.audioBuffer);
     const newPeaks = dawSampleManager.extractPeaks(normalized, 120);
 
-    setProject((prev) => ({
-      ...prev,
-      clips: prev.clips.map((c) => (c.id === clipId ? { ...c, audioBuffer: normalized, peaks: newPeaks } : c)),
-    }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = {
+      ...project,
+      clips: project.clips.map((c) => (c.id === clipId ? { ...c, audioBuffer: normalized, peaks: newPeaks } : c)),
+    };
+
+    historyRef.current.pushAction({
+      description: `Normalize "${clip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setIsDirty(true);
     showSnackbar(`Normalized peaks for "${clip.name}"!`);
   };
@@ -949,10 +983,19 @@ export const BeatStudioPage: React.FC = () => {
       audioBuffer: clip.audioBuffer,
     };
 
-    setProject((prev) => ({
-      ...prev,
-      clips: [...prev.clips, duplicated],
-    }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = {
+      ...project,
+      clips: [...project.clips, duplicated],
+    };
+
+    historyRef.current.pushAction({
+      description: `Duplicate Clip "${clip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setSelectedClipId(duplicated.id);
     setIsDirty(true);
     showSnackbar(`Duplicated "${clip.name}" to Bar ${newStartBar}!`);
@@ -971,10 +1014,19 @@ export const BeatStudioPage: React.FC = () => {
       durationSteps: Math.max(1, Math.round(n.durationSteps)),
     }));
 
-    setProject((prev) => ({
-      ...prev,
-      clips: prev.clips.map((c) => (c.id === targetClip.id ? { ...c, notes: quantizedNotes } : c)),
-    }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = {
+      ...project,
+      clips: project.clips.map((c) => (c.id === targetClip.id ? { ...c, notes: quantizedNotes } : c)),
+    };
+
+    historyRef.current.pushAction({
+      description: `Quantize "${targetClip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setIsDirty(true);
     showSnackbar(`Quantized ${quantizedNotes.length} notes in "${targetClip.name}" to grid!`);
   };
@@ -994,12 +1046,21 @@ export const BeatStudioPage: React.FC = () => {
     const reversed = dawSampleManager.reverseBuffer(clip.audioBuffer);
     const newPeaks = dawSampleManager.extractPeaks(reversed, 120);
 
-    setProject((prev) => ({
-      ...prev,
-      clips: prev.clips.map((c) =>
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = {
+      ...project,
+      clips: project.clips.map((c) =>
         c.id === targetId ? { ...c, audioBuffer: reversed, peaks: newPeaks, isReversed: !c.isReversed } : c
       ),
-    }));
+    };
+
+    historyRef.current.pushAction({
+      description: `Reverse "${clip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setIsDirty(true);
     showSnackbar(`Reversed audio waveform for "${clip.name}"!`);
   };
@@ -1067,10 +1128,19 @@ export const BeatStudioPage: React.FC = () => {
       audioBuffer: clipboardClipRef.current.audioBuffer,
     };
 
-    setProject((prev) => ({
-      ...prev,
-      clips: [...prev.clips, pastedClip],
-    }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = {
+      ...project,
+      clips: [...project.clips, pastedClip],
+    };
+
+    historyRef.current.pushAction({
+      description: `Paste "${pastedClip.name}"`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setSelectedClipId(pastedClip.id);
     setSelectedTrackId(targetTrackId);
     setIsDirty(true);
@@ -1101,11 +1171,26 @@ export const BeatStudioPage: React.FC = () => {
       audioBuffer: c.audioBuffer,
     }));
 
-    setProject((prev) => ({
-      ...prev,
-      tracks: [...prev.tracks, newTrack],
-      clips: [...prev.clips, ...duplicatedClips],
-    }));
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = {
+      ...project,
+      tracks: [...project.tracks, newTrack],
+      clips: [...project.clips, ...duplicatedClips],
+    };
+
+    historyRef.current.pushAction({
+      description: `Duplicate Track "${origTrack.name}"`,
+      undo: () => {
+        setProject(prevProject);
+        mixer.removeChannel(newTrackId);
+      },
+      redo: () => {
+        setProject(nextProject);
+        mixer.registerChannel(newTrack.id, newTrack.name, newTrack.color, newTrack.effects);
+      },
+    });
+
+    setProject(nextProject);
     mixer.registerChannel(newTrack.id, newTrack.name, newTrack.color, newTrack.effects);
     mixer.syncChannel(newTrack.id, newTrack.isMuted, newTrack.isSolo, newTrack.volumeDb, newTrack.pan);
     setSelectedTrackId(newTrack.id);
@@ -1528,11 +1613,20 @@ export const BeatStudioPage: React.FC = () => {
       notes,
     };
 
-    setProject((prev) => ({
-      ...prev,
+    const prevProject = JSON.parse(JSON.stringify(project));
+    const nextProject = {
+      ...project,
       tracks: nextTracks,
-      clips: [...prev.clips, newClip],
-    }));
+      clips: [...project.clips, newClip],
+    };
+
+    historyRef.current.pushAction({
+      description: `Commit ${name} Beat`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
     setSelectedTrackId(drumTrack.id);
     setSelectedClipId(newClip.id);
     setIsDirty(true);
@@ -2176,6 +2270,7 @@ export const BeatStudioPage: React.FC = () => {
             currentPlayheadBar={Math.floor(currentStepIndex / 16) + 1}
             onApplyBeatPreset={handleApplyBeatPreset}
             onOpenCoverModal={() => setIsCoverModalOpen(true)}
+            onDuplicateProject={handleDuplicateProject}
           />
         )}
 
