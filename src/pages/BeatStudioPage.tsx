@@ -2079,13 +2079,79 @@ export const BeatStudioPage: React.FC = () => {
 
       const dupChat = data.chat;
       if (dupChat) {
-        setProject((prev) => ({
-          ...prev,
-          id: `proj_${dupChat.id}`,
-          name: dupChat.name,
-          bpm: dupChat.style?.bpm || prev.bpm,
-          key: dupChat.style?.key || prev.key,
-        }));
+        if (dupChat.studioArrangement && dupChat.studioArrangement.tracks?.length > 0) {
+          setProject({
+            ...dupChat.studioArrangement,
+            id: `proj_${dupChat.id}`,
+            name: dupChat.name,
+            bpm: dupChat.style?.bpm || dupChat.studioArrangement.bpm || 120,
+            key: dupChat.style?.key || dupChat.studioArrangement.key || 'C Minor',
+          });
+        } else {
+          const newBpm = dupChat.style?.bpm || 120;
+          setProject((prev) => ({
+            ...prev,
+            id: `proj_${dupChat.id}`,
+            name: dupChat.name,
+            bpm: newBpm,
+            key: dupChat.style?.key || prev.key,
+          }));
+
+          // If the project has an existing rendered song version, load it as an audio track
+          if (dupChat.versions && dupChat.versions.length > 0) {
+            const latest = dupChat.versions[dupChat.versions.length - 1];
+            const mp3File = latest.mp3File || `${dupChat.folderName}_${latest.version || 'v1'}.mp3`;
+            const audioUrl = `/api/audio/${encodeURIComponent(dupChat.id)}/${encodeURIComponent(mp3File)}`;
+
+            dawSampleManager
+              .decodeAudioUrl(audioUrl)
+              .then(({ buffer, peaks }) => {
+                const secPerBar = (60 / newBpm) * 4;
+                const durationBars = Math.max(1, Math.ceil(buffer.duration / secPerBar));
+                const trackId = `track_guide_${Date.now()}`;
+                const clipId = `clip_guide_${Date.now()}`;
+
+                const guideTrack: DawTrack = {
+                  id: trackId,
+                  name: asCover ? 'Guide Audio (Cover Baseline)' : 'Cloned Master Audio',
+                  type: 'audio',
+                  color: '#35C9A5',
+                  volumeDb: -3,
+                  pan: 0,
+                  isMuted: false,
+                  isSolo: false,
+                  isArmed: false,
+                  effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+                };
+
+                const guideClip: DawClip = {
+                  id: clipId,
+                  trackId,
+                  name: `${dupChat.name} Audio`,
+                  type: 'audio',
+                  startBar: 1,
+                  durationBars,
+                  color: '#35C9A5',
+                  audioBuffer: buffer,
+                  peaks,
+                };
+
+                setProject((prev) => ({
+                  ...prev,
+                  tracks: [guideTrack, ...prev.tracks],
+                  clips: [guideClip, ...prev.clips],
+                  totalBars: Math.max(prev.totalBars, durationBars + 4),
+                }));
+                mixer.registerChannel(trackId, guideTrack.name, guideTrack.color);
+                mixer.setChannelVolume(trackId, guideTrack.volumeDb);
+                mixer.setChannelPan(trackId, guideTrack.pan);
+                showSnackbar(`Loaded reference audio waveform for "${dupChat.name}"!`);
+              })
+              .catch(() => {
+                // Non-blocking fallback if audio file isn't on disk
+              });
+          }
+        }
         setIsDirty(true);
         showSnackbar(`Loaded ${asCover ? 'cover' : 'duplicate'} project "${dupChat.name}" into Studio!`);
       }

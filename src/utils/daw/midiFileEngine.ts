@@ -320,6 +320,20 @@ export function parseMidiFile(buffer: ArrayBuffer): Array<{ name: string; notes:
       }
     }
 
+    // Flush any remaining active notes that didn't receive explicit note-off before end of track
+    for (const [, active] of activeNotes.entries()) {
+      const startStep = Math.round(active.startTick / ticksPerStep);
+      const endStep = Math.max(startStep + 1, Math.round(currentTick / ticksPerStep));
+      const durationSteps = Math.max(1, endStep - startStep);
+      finishedNotes.push({
+        id: `imported_note_${t}_${finishedNotes.length}`,
+        pitch: active.pitch,
+        step: startStep,
+        durationSteps,
+        velocity: active.velocity,
+      });
+    }
+
     if (finishedNotes.length > 0 || trackName !== `MIDI Track ${t + 1}`) {
       parsedTracks.push({
         name: trackName,

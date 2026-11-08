@@ -221,16 +221,37 @@ export const CoverDuplicateModal: React.FC<CoverDuplicateModalProps> = ({
                 </div>
               )}
 
-              {/* Search & Filter */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <input
-                  type="text"
-                  placeholder="Search projects to use as cover..."
-                  className="input-field"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  style={{ flex: 1, height: '38px', fontSize: '13px' }}
-                />
+              {/* Search, Custom Name & Filter */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="New Project Name (Optional - e.g. Why Force It - Chill Cover)..."
+                    className="input-field"
+                    value={customName}
+                    onChange={e => setCustomName(e.target.value)}
+                    style={{ flex: 1, minWidth: '220px', height: '38px', fontSize: '13px' }}
+                  />
+                  {customName && (
+                    <button
+                      className="btn-text"
+                      onClick={() => setCustomName('')}
+                      style={{ fontSize: '11px', color: 'var(--color-text-secondary)', height: '36px' }}
+                    >
+                      Clear Name
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="Search projects to use as cover..."
+                    className="input-field"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    style={{ flex: 1, height: '38px', fontSize: '13px' }}
+                  />
 
                 <select
                   className="input-field"
@@ -247,6 +268,7 @@ export const CoverDuplicateModal: React.FC<CoverDuplicateModalProps> = ({
                   <option value="indian">Indian</option>
                 </select>
               </div>
+            </div>
 
               {/* Projects Grid */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

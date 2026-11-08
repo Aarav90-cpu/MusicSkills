@@ -215,6 +215,17 @@ class SampleManager {
     return { buffer, peaks };
   }
 
+  public async decodeAudioUrl(url: string): Promise<{ buffer: AudioBuffer; peaks: number[] }> {
+    const ctx = dawContextManager.getContext();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching audio from ${url}`);
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = await ctx.decodeAudioData(arrayBuffer);
+    const peaks = this.extractPeaks(buffer, 120);
+
+    return { buffer, peaks };
+  }
+
   public getSamplesByCategory(category: string): SampleItem[] {
     const all = Array.from(this.sampleLibrary.values());
     if (category === 'all') return all;
