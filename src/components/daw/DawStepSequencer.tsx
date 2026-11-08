@@ -22,7 +22,7 @@ interface DawStepSequencerProps {
   currentStepIndex: number;
   isPlaying: boolean;
   bpm: number;
-  onCommitToTimeline: (drumPattern: Record<string, boolean[]>, startBar: number, name: string) => void;
+  onCommitToTimeline: (drumPattern: Record<string, boolean[]>, startBar: number, name: string, repeatBars?: number) => void;
   currentPlayheadBar: number;
 }
 
@@ -95,6 +95,11 @@ export const DawStepSequencer: React.FC<DawStepSequencerProps> = ({
   const [voices, setVoices] = useState<StepSequencerVoiceState[]>(DEFAULT_VOICES);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('trap-808-drift');
   const [commitBar, setCommitBar] = useState<number>(currentPlayheadBar);
+  const [repeatBars, setRepeatBars] = useState<number>(4);
+
+  useEffect(() => {
+    setCommitBar(currentPlayheadBar);
+  }, [currentPlayheadBar]);
 
   const activeStep = currentStepIndex % 16;
   const lastPlayedStepRef = useRef<number>(-1);
@@ -221,7 +226,7 @@ export const DawStepSequencer: React.FC<DawStepSequencerProps> = ({
       patternRecord[v.id] = v.steps;
     });
     const presetName = BEAT_PRESETS.find((p) => p.id === selectedPresetId)?.name || 'Custom Beat';
-    onCommitToTimeline(patternRecord, commitBar, presetName);
+    onCommitToTimeline(patternRecord, commitBar, presetName, repeatBars);
   };
 
   return (
@@ -316,7 +321,7 @@ export const DawStepSequencer: React.FC<DawStepSequencerProps> = ({
               value={commitBar}
               onChange={(e) => setCommitBar(Math.max(1, parseInt(e.target.value, 10) || 1))}
               style={{
-                width: '48px',
+                width: '44px',
                 height: '28px',
                 backgroundColor: '#1D2027',
                 border: '1px solid #323744',
@@ -327,6 +332,31 @@ export const DawStepSequencer: React.FC<DawStepSequencerProps> = ({
                 fontWeight: 600,
               }}
             />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>Length:</span>
+            <select
+              value={repeatBars}
+              onChange={(e) => setRepeatBars(parseInt(e.target.value, 10))}
+              style={{
+                height: '28px',
+                backgroundColor: '#1D2027',
+                border: '1px solid #323744',
+                borderRadius: '4px',
+                color: '#F3F4F6',
+                padding: '0 6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value={1}>1 Bar</option>
+              <option value={2}>2 Bars</option>
+              <option value={4}>4 Bars</option>
+              <option value={8}>8 Bars</option>
+            </select>
           </div>
 
           <button

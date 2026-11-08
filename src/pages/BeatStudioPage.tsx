@@ -43,6 +43,36 @@ import { CoverDuplicateModal } from '../components/studio/CoverDuplicateModal';
 import { BeatPreset } from '../utils/beatPresets';
 import { PianoRoll } from '../components/studio/PianoRoll';
 
+const KEY_TO_SEMITONE: Record<string, number> = {
+  KeyA: 0,   // C
+  KeyW: 1,   // C#
+  KeyS: 2,   // D
+  KeyE: 3,   // D#
+  KeyD: 4,   // E
+  KeyF: 5,   // F
+  KeyT: 6,   // F#
+  KeyG: 7,   // G
+  KeyY: 8,   // G#
+  KeyH: 9,   // A
+  KeyU: 10,  // A#
+  KeyJ: 11,  // B
+  KeyK: 12,  // C (next octave)
+  KeyO: 13,  // C# (next octave)
+  KeyL: 14,  // D (next octave)
+  KeyP: 15,  // D# (next octave)
+  Semicolon: 16, // E (next octave)
+};
+
+const SEMITONE_PITCHES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+function getMusicalTypingPitch(code: string, baseOctave: number): string | null {
+  const semitoneOffset = KEY_TO_SEMITONE[code];
+  if (semitoneOffset === undefined) return null;
+  const octave = baseOctave + Math.floor(semitoneOffset / 12);
+  const noteIndex = semitoneOffset % 12;
+  return `${SEMITONE_PITCHES[noteIndex]}${octave}`;
+}
+
 export const BeatStudioPage: React.FC = () => {
   const { activeChat, setActiveChatId, refreshChats, showSnackbar, setRoute } = useApp();
 
@@ -81,6 +111,11 @@ export const BeatStudioPage: React.FC = () => {
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(false);
+
+  // Musical Typing (Computer QWERTY Keyboard as MIDI Controller)
+  const [musicalTypingEnabled, setMusicalTypingEnabled] = useState<boolean>(true);
+  const [musicalOctave, setMusicalOctave] = useState<number>(4);
+  const activeKeyVoicesRef = useRef<Map<string, { voiceId: string; noteStartTime: number; notePitch: string; startStep: number }>>(new Map());
 
   // Effects Rack & Dialog Modals State
   const [activeEffectsTrackId, setActiveEffectsTrackId] = useState<string | null>(null);
@@ -249,38 +284,100 @@ export const BeatStudioPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [project, isDirty]);
 
-  // Keyboard Shortcuts
+  // Keyboard Shortcuts & Live Musical Typing
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
 
+      // 1. Musical Typing handling (when enabled)
+      if (musicalTypingEnabled && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (e.code === 'KeyZ') {
+          e.preventDefault();
+          setMusicalOctave((o) => {
+            const next = Math.max(1, o - 1);
+            showSnackbar(`Keyboard Octave: ${next}`);
+            return next;
+          });
+          return;
+        }
+        if (e.code === 'KeyX') {
+          e.preventDefault();
+          setMusicalOctave((o) => {
+            const next = Math.min(6, o + 1);
+            showSnackbar(`Keyboard Octave: ${next}`);
+            return next;
+          });
+          return;
+        }
+
+        const pitch = getMusicalTypingPitch(e.code, musicalOctave);
+        if (pitch) {
+          if (e.repeat || activeKeyVoicesRef.current.has(e.code)) return;
+          e.preventDefault();
+
+          const targetTrack =
+            project.tracks.find((t) => t.isArmed) ||
+            project.tracks.find((t) => t.id === selectedTrackId) ||
+            project.tracks[0];
+
+          if (targetTrack) {
+            const channel = mixer.getChannel(targetTrack.id);
+            const voiceId = dawSynthEngine.triggerAttack(
+              pitch,
+              0.85,
+              targetTrack.instrumentPreset || 'piano',
+              channel?.inputNode
+            );
+
+            activeKeyVoicesRef.current.set(e.code, {
+              voiceId,
+              noteStartTime: dawContextManager.getContext().currentTime,
+              notePitch: pitch,
+              startStep: currentStepIndex,
+            });
+          }
+          return;
+        }
+      }
+
+      // 2. Global Transport & Workflow Shortcuts
       if (e.code === 'Space') {
         e.preventDefault();
         handleTogglePlay();
       } else if (e.code === 'KeyR' && !e.ctrlKey) {
         e.preventDefault();
         handleToggleRecord();
-      } else if (e.code === 'KeyL') {
+      } else if (e.code === 'KeyL' && !e.ctrlKey) {
         e.preventDefault();
         handleToggleLoop();
-      } else if (e.code === 'KeyS' && !e.ctrlKey) {
+      } else if (e.code === 'Digit1') {
+        setActiveTool('pointer');
+      } else if (e.code === 'Digit2') {
+        setActiveTool('draw');
+      } else if (e.code === 'Digit3') {
+        setActiveTool('erase');
+      } else if (e.code === 'Digit4') {
+        setActiveTool('split');
+      } else if (e.code === 'Digit5') {
+        setActiveTool('mute');
+      } else if (!musicalTypingEnabled && e.code === 'KeyS' && !e.ctrlKey) {
         e.preventDefault();
         setActiveTool('split');
-      } else if (e.code === 'KeyD' && !e.ctrlKey) {
+      } else if (!musicalTypingEnabled && e.code === 'KeyD' && !e.ctrlKey) {
         e.preventDefault();
         setActiveTool('draw');
-      } else if (e.code === 'KeyE' && !e.ctrlKey) {
+      } else if (!musicalTypingEnabled && e.code === 'KeyE' && !e.ctrlKey) {
         e.preventDefault();
         setActiveTool('erase');
-      } else if (e.code === 'KeyB') {
+      } else if (e.code === 'KeyB' && !e.ctrlKey) {
         e.preventDefault();
         setShowBrowser((prev) => !prev);
       } else if (e.code === 'KeyM' && !e.ctrlKey) {
         e.preventDefault();
         setShowMixer((prev) => !prev);
-      } else if (e.code === 'KeyI') {
+      } else if (e.code === 'KeyI' && !e.ctrlKey) {
         e.preventDefault();
         setShowInspector((prev) => !prev);
       } else if (e.key === 'z' && e.ctrlKey && !e.shiftKey) {
@@ -323,9 +420,82 @@ export const BeatStudioPage: React.FC = () => {
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      const activeVoice = activeKeyVoicesRef.current.get(e.code);
+      if (activeVoice) {
+        const targetTrack =
+          project.tracks.find((t) => t.isArmed) ||
+          project.tracks.find((t) => t.id === selectedTrackId) ||
+          project.tracks[0];
+
+        dawSynthEngine.triggerRelease(activeVoice.voiceId, targetTrack?.instrumentPreset || 'piano');
+        activeKeyVoicesRef.current.delete(e.code);
+
+        if (isRecording && targetTrack) {
+          const stepDuration = 60 / project.bpm / 4;
+          const ctx = dawContextManager.getContext();
+          const elapsedSec = ctx.currentTime - activeVoice.noteStartTime;
+          const durationSteps = Math.max(1, Math.round(elapsedSec / stepDuration));
+
+          const currentBarNum = Math.floor(activeVoice.startStep / 16) + 1;
+          const stepInBar = activeVoice.startStep % 16;
+
+          setProject((prev) => {
+            const clip = prev.clips.find(
+              (c) =>
+                c.trackId === targetTrack.id &&
+                c.type === 'midi' &&
+                currentBarNum >= c.startBar &&
+                currentBarNum < c.startBar + c.durationBars
+            );
+
+            const stepInClip = clip ? (currentBarNum - clip.startBar) * 16 + stepInBar : stepInBar;
+            const newNote: DawNote = {
+              id: `kb_rec_${Date.now()}_${Math.random()}`,
+              pitch: activeVoice.notePitch,
+              step: stepInClip,
+              durationSteps,
+              velocity: 0.85,
+            };
+
+            if (clip) {
+              return {
+                ...prev,
+                clips: prev.clips.map((c) =>
+                  c.id === clip.id ? { ...c, notes: [...(c.notes || []), newNote] } : c
+                ),
+              };
+            } else {
+              const newClip: DawClip = {
+                id: `rec_kb_clip_${Date.now()}`,
+                trackId: targetTrack.id,
+                name: `${targetTrack.name} Take`,
+                type: 'midi',
+                startBar: currentBarNum,
+                durationBars: 4,
+                color: targetTrack.color,
+                notes: [newNote],
+              };
+              return {
+                ...prev,
+                clips: [...prev.clips, newClip],
+              };
+            }
+          });
+          setIsDirty(true);
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isRecording, project]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isPlaying, isRecording, project, musicalTypingEnabled, musicalOctave, selectedClipId, selectedTrackId, currentStepIndex]);
 
   // --- PLAYBACK ENGINE ---
 
@@ -345,6 +515,30 @@ export const BeatStudioPage: React.FC = () => {
     const totalSteps = project.totalBars * 16;
     let nextStepTime = ctx.currentTime;
     let step = currentStepIndex % totalSteps;
+
+    // Check if any audio clip is currently covering currentStepIndex where currentStepIndex > clipStartStep
+    const anySoloed = project.tracks.some((t) => t.isSolo);
+    project.tracks.forEach((track) => {
+      const channel = mixer.getChannel(track.id);
+      if (!channel) return;
+      if (anySoloed && !track.isSolo) return;
+      if (track.isMuted) return;
+
+      const activeClips = project.clips.filter(
+        (c) => c.trackId === track.id && !c.isMuted && c.type === 'audio' && c.audioBuffer
+      );
+
+      activeClips.forEach((clip) => {
+        const clipStartStep = (clip.startBar - 1) * 16;
+        const clipEndStep = (clip.startBar - 1 + clip.durationBars) * 16;
+        if (step > clipStartStep && step < clipEndStep && clip.audioBuffer) {
+          const offsetSec = (step - clipStartStep) * stepDuration;
+          if (offsetSec < clip.audioBuffer.duration) {
+            playAudioClip(clip, channel.inputNode, ctx.currentTime, offsetSec);
+          }
+        }
+      });
+    });
 
     playbackTimerRef.current = setInterval(() => {
       while (nextStepTime < ctx.currentTime + 0.1) {
@@ -369,6 +563,36 @@ export const BeatStudioPage: React.FC = () => {
           const loopStartStep = (project.loopStartBar - 1) * 16;
           if (step >= loopEndStep) {
             step = loopStartStep;
+
+            // Stop playing audio sources that were active prior to loop wrap
+            activeSourcesRef.current.forEach((node) => {
+              try {
+                (node as any).stop();
+              } catch (_) {}
+            });
+            activeSourcesRef.current = [];
+
+            // If an audio clip spans across loopStartStep:
+            project.tracks.forEach((track) => {
+              const channel = mixer.getChannel(track.id);
+              if (!channel) return;
+              if (anySoloed && !track.isSolo) return;
+              if (track.isMuted) return;
+
+              const activeClips = project.clips.filter(
+                (c) => c.trackId === track.id && !c.isMuted && c.type === 'audio' && c.audioBuffer
+              );
+              activeClips.forEach((clip) => {
+                const clipStartStep = (clip.startBar - 1) * 16;
+                const clipEndStep = (clip.startBar - 1 + clip.durationBars) * 16;
+                if (loopStartStep > clipStartStep && loopStartStep < clipEndStep && clip.audioBuffer) {
+                  const offsetSec = (loopStartStep - clipStartStep) * stepDuration;
+                  if (offsetSec < clip.audioBuffer.duration) {
+                    playAudioClip(clip, channel.inputNode, time, offsetSec);
+                  }
+                }
+              });
+            });
           }
         } else if (step >= totalSteps) {
           step = 0;
@@ -452,7 +676,7 @@ export const BeatStudioPage: React.FC = () => {
     });
   };
 
-  const playAudioClip = (clip: DawClip, destinationNode: AudioNode, time: number) => {
+  const playAudioClip = (clip: DawClip, destinationNode: AudioNode, time: number, offsetSec = 0) => {
     if (!clip.audioBuffer) return;
     const ctx = dawContextManager.getContext();
     const source = ctx.createBufferSource();
@@ -479,8 +703,15 @@ export const BeatStudioPage: React.FC = () => {
       source.connect(destinationNode);
     }
 
-    source.start(time);
-    activeSourcesRef.current.push(source);
+    if (offsetSec > 0) {
+      if (offsetSec < buf.duration) {
+        source.start(time, offsetSec);
+        activeSourcesRef.current.push(source);
+      }
+    } else {
+      source.start(time);
+      activeSourcesRef.current.push(source);
+    }
   };
 
   const playMidiVoice = (note: { pitch: string; durationSteps: number; velocity: number }, preset: string, destinationNode: AudioNode, time: number) => {
@@ -1228,9 +1459,12 @@ export const BeatStudioPage: React.FC = () => {
   const handleCommitStepPattern = (
     drumPattern: Record<string, boolean[]>,
     startBar: number,
-    name: string
+    name: string,
+    repeatBars = 4
   ) => {
-    let drumTrack = project.tracks.find((t) => t.name.toLowerCase().includes('drum') || t.id.includes('drum'));
+    let drumTrack = project.tracks.find(
+      (t) => t.name.toLowerCase().includes('drum') || t.id.includes('drum') || t.instrumentPreset === 'drums'
+    );
     let nextTracks = [...project.tracks];
 
     if (!drumTrack) {
@@ -1244,11 +1478,15 @@ export const BeatStudioPage: React.FC = () => {
         isMuted: false,
         isSolo: false,
         isArmed: false,
-        instrumentPreset: 'bass',
+        instrumentPreset: 'drums',
         effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
       };
       nextTracks.push(drumTrack);
       mixer.registerChannel(drumTrack.id, drumTrack.name, drumTrack.color);
+    } else if (drumTrack.instrumentPreset !== 'drums') {
+      drumTrack = { ...drumTrack, instrumentPreset: 'drums' };
+      const idx = nextTracks.findIndex((t) => t.id === drumTrack!.id);
+      if (idx !== -1) nextTracks[idx] = drumTrack;
     }
 
     const voiceToPitchMap: Record<string, string> = {
@@ -1262,20 +1500,22 @@ export const BeatStudioPage: React.FC = () => {
     };
 
     const notes: DawNote[] = [];
-    Object.entries(drumPattern).forEach(([voiceId, steps]) => {
-      const pitch = voiceToPitchMap[voiceId] || 'C2';
-      steps.forEach((active, stepIdx) => {
-        if (active) {
-          notes.push({
-            id: `drum_${voiceId}_${stepIdx}_${Date.now()}`,
-            pitch,
-            step: stepIdx,
-            durationSteps: 1,
-            velocity: 0.85,
-          });
-        }
+    for (let bar = 0; bar < repeatBars; bar++) {
+      Object.entries(drumPattern).forEach(([voiceId, steps]) => {
+        const pitch = voiceToPitchMap[voiceId] || 'C2';
+        steps.forEach((active, stepIdx) => {
+          if (active) {
+            notes.push({
+              id: `drum_${voiceId}_${bar}_${stepIdx}_${Date.now()}_${Math.random()}`,
+              pitch,
+              step: bar * 16 + stepIdx,
+              durationSteps: 1,
+              velocity: 0.85,
+            });
+          }
+        });
       });
-    });
+    }
 
     const newClip: DawClip = {
       id: `clip_drum_${Date.now()}`,
@@ -1283,7 +1523,7 @@ export const BeatStudioPage: React.FC = () => {
       name: `${name} Beat`,
       type: 'midi',
       startBar,
-      durationBars: 1,
+      durationBars: repeatBars,
       color: drumTrack.color,
       notes,
     };
@@ -1296,7 +1536,7 @@ export const BeatStudioPage: React.FC = () => {
     setSelectedTrackId(drumTrack.id);
     setSelectedClipId(newClip.id);
     setIsDirty(true);
-    showSnackbar(`Committed ${name} pattern to "${drumTrack.name}" at Bar ${startBar}!`);
+    showSnackbar(`Committed ${name} pattern (${repeatBars} bars) to "${drumTrack.name}" at Bar ${startBar}!`);
   };
 
   // --- UNDO / REDO ---
@@ -1815,7 +2055,7 @@ export const BeatStudioPage: React.FC = () => {
     onAddAudioTrack: () => handleAddTrack('audio', 'Audio Track', '#35C9A5'),
     onAddMidiTrack: () => handleAddTrack('midi', 'MIDI Track', '#8B78FF', 'piano'),
     onAddInstrumentTrack: () => handleAddTrack('instrument', '808 Bass Track', '#FF5252', 'bass'),
-    onAddDrumTrack: () => handleAddTrack('instrument', 'Drum Sequencer', '#FF5252', 'bass'),
+    onAddDrumTrack: () => handleAddTrack('instrument', 'Drum Sequencer', '#FF5252', 'drums'),
     onDuplicateSelectedTrack: () => {
       if (selectedTrackId) handleDuplicateTrack(selectedTrackId);
     },
@@ -1919,6 +2159,10 @@ export const BeatStudioPage: React.FC = () => {
           setIsDirty(true);
         }}
         onJumpToBar={handleScrubPlayhead}
+        musicalTypingEnabled={musicalTypingEnabled}
+        onToggleMusicalTyping={() => setMusicalTypingEnabled((prev) => !prev)}
+        musicalOctave={musicalOctave}
+        onChangeOctave={setMusicalOctave}
       />
 
       {/* 4. Central Horizontal Workspace Splitter */}
@@ -2031,6 +2275,7 @@ export const BeatStudioPage: React.FC = () => {
                   setShowInspector(true);
                 }
               }}
+              onAddTrack={handleAddTrack}
             />
           )}
 

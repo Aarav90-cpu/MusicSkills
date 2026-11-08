@@ -23,6 +23,10 @@ interface DawTransportBarProps {
   snapResolution: string;
   onChangeSnap: (snap: string) => void;
   onJumpToBar: (bar: number) => void;
+  musicalTypingEnabled?: boolean;
+  onToggleMusicalTyping?: () => void;
+  musicalOctave?: number;
+  onChangeOctave?: (oct: number) => void;
 }
 
 export const DawTransportBar: React.FC<DawTransportBarProps> = ({
@@ -48,6 +52,10 @@ export const DawTransportBar: React.FC<DawTransportBarProps> = ({
   snapResolution,
   onChangeSnap,
   onJumpToBar,
+  musicalTypingEnabled = false,
+  onToggleMusicalTyping,
+  musicalOctave = 4,
+  onChangeOctave,
 }) => {
   // Tap tempo tracking
   const lastTapRef = useRef<number>(0);
@@ -462,6 +470,85 @@ export const DawTransportBar: React.FC<DawTransportBarProps> = ({
             <option value="1/16" style={{ backgroundColor: '#1D2027' }}>1/16 Note</option>
             <option value="free" style={{ backgroundColor: '#1D2027' }}>Free (No Snap)</option>
           </select>
+        </div>
+
+        {/* Musical Typing / Computer Keyboard MIDI Input */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#101114',
+            border: musicalTypingEnabled ? '1px solid #8B78FF' : '1px solid #252932',
+            borderRadius: '4px',
+            padding: '2px 4px',
+            gap: '4px',
+          }}
+        >
+          <button
+            onClick={onToggleMusicalTyping}
+            style={{
+              height: '22px',
+              padding: '0 6px',
+              fontSize: '10px',
+              fontWeight: 800,
+              backgroundColor: musicalTypingEnabled ? '#8B78FF' : 'transparent',
+              color: musicalTypingEnabled ? '#FFFFFF' : '#9CA3AF',
+              border: 'none',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+            title="Toggle Musical Typing (Play piano/synth notes with A, W, S, E, D, F, G, H, J, K keys)"
+          >
+            <span className="material-icons-round" style={{ fontSize: '13px' }}>keyboard</span>
+            <span>KB MIDI</span>
+          </button>
+
+          {musicalTypingEnabled && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <button
+                onClick={() => onChangeOctave?.(Math.max(1, musicalOctave - 1))}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  padding: 0,
+                  border: 'none',
+                  backgroundColor: '#252932',
+                  color: '#CBD5E1',
+                  borderRadius: '2px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                }}
+                title="Octave Down (Z)"
+              >
+                -
+              </button>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: '#35C9A5', padding: '0 3px', fontFamily: 'monospace' }}>
+                Oct {musicalOctave}
+              </span>
+              <button
+                onClick={() => onChangeOctave?.(Math.min(6, musicalOctave + 1))}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  padding: 0,
+                  border: 'none',
+                  backgroundColor: '#252932',
+                  color: '#CBD5E1',
+                  borderRadius: '2px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                }}
+                title="Octave Up (X)"
+              >
+                +
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

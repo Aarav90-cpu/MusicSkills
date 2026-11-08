@@ -267,10 +267,15 @@ export class SynthEngine {
     const ctx = dawContextManager.getContext();
     const t = time ?? ctx.currentTime;
     const dest = destination || ctx.destination;
+    const voiceId = `${pitch}_${Date.now()}_${Math.random()}`;
+
+    if (presetId === 'drums' || presetId === 'drum') {
+      dawAudioEngine.playDrumVoice(pitch, t, velocity, ctx, dest);
+      return voiceId;
+    }
+
     const preset = SYNTH_PRESETS[presetId] || SYNTH_PRESETS.piano;
     const freq = pitchToFrequency(pitch);
-
-    const voiceId = `${pitch}_${Date.now()}_${Math.random()}`;
 
     const osc1 = ctx.createOscillator();
     osc1.type = preset.oscillatorType;

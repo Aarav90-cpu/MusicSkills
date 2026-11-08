@@ -29,6 +29,7 @@ interface DawArrangementViewProps {
   loopStartBar: number;
   loopEndBar: number;
   isLoopEnabled: boolean;
+  onAddTrack?: (type: DawTrack['type'], name: string, color: string, preset?: string) => void;
 }
 
 export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
@@ -59,6 +60,7 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
   loopStartBar,
   loopEndBar,
   isLoopEnabled,
+  onAddTrack,
 }) => {
   const BAR_WIDTH = 54;
   const HEADER_WIDTH = 230;
@@ -203,9 +205,9 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#697180' }}>
           <span>Tool: <strong style={{ color: '#F3F4F6', textTransform: 'capitalize' }}>{activeTool}</strong></span>
-          <span>·</span>
+          <span>/</span>
           <span>{tracks.length} Tracks</span>
-          <span>·</span>
+          <span>/</span>
           <span>{clips.length} Clips</span>
         </div>
       </div>
@@ -650,6 +652,106 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
               </div>
             );
           })}
+
+          {/* Add Track Control Bar at bottom of arrangement */}
+          {onAddTrack && (
+            <div
+              style={{
+                display: 'flex',
+                height: '38px',
+                borderBottom: '1px solid #1D2027',
+                backgroundColor: '#121418',
+              }}
+            >
+              <div
+                style={{
+                  width: `${HEADER_WIDTH}px`,
+                  flexShrink: 0,
+                  backgroundColor: '#14161C',
+                  borderRight: '1px solid #1D2027',
+                  padding: '6px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span style={{ fontSize: '10px', fontWeight: 700, color: '#697180', marginRight: '2px' }}>
+                  + TRACK:
+                </span>
+                <button
+                  onClick={() => onAddTrack('audio', `Audio ${tracks.length + 1}`, '#35C9A5')}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    backgroundColor: '#1D2027',
+                    color: '#35C9A5',
+                    border: '1px solid #252932',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                  }}
+                  title="Add new Audio Track"
+                >
+                  Audio
+                </button>
+                <button
+                  onClick={() => onAddTrack('midi', `Keys ${tracks.length + 1}`, '#8B78FF', 'piano')}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    backgroundColor: '#1D2027',
+                    color: '#8B78FF',
+                    border: '1px solid #252932',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                  }}
+                  title="Add new MIDI Keys Track"
+                >
+                  MIDI
+                </button>
+                <button
+                  onClick={() => onAddTrack('instrument', `Bass ${tracks.length + 1}`, '#FF5252', 'bass')}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    backgroundColor: '#1D2027',
+                    color: '#FF5252',
+                    border: '1px solid #252932',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                  }}
+                  title="Add new 808 Bass Track"
+                >
+                  Bass
+                </button>
+                <button
+                  onClick={() => onAddTrack('instrument', `Drums ${tracks.length + 1}`, '#E9A45B', 'drums')}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    backgroundColor: '#1D2027',
+                    color: '#E9A45B',
+                    border: '1px solid #252932',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                  }}
+                  title="Add new Drum Sequencer Track"
+                >
+                  Drums
+                </button>
+              </div>
+              <div
+                style={{
+                  width: `${totalBars * BAR_WIDTH}px`,
+                  flexShrink: 0,
+                  backgroundColor: 'rgba(255, 255, 255, 0.01)',
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
