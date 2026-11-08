@@ -52,7 +52,7 @@ export const App: React.FC = () => {
   return (
     <AppShell>
       {renderCurrentPage()}
-      <FloatingChatBox />
+      {route !== 'studio' && <FloatingChatBox />}
     </AppShell>
   );
 };

@@ -8,6 +8,7 @@ interface DawTitleBarProps {
   onChangeWorkspace: (ws: 'arrangement' | 'pianoroll' | 'stepsequencer' | 'mixer') => void;
   onExit: () => void;
   midiConnectedCount?: number;
+  onOpenCoversModal?: () => void;
 }
 
 export const DawTitleBar: React.FC<DawTitleBarProps> = ({
@@ -18,6 +19,7 @@ export const DawTitleBar: React.FC<DawTitleBarProps> = ({
   onChangeWorkspace,
   onExit,
   midiConnectedCount = 0,
+  onOpenCoversModal,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [tempName, setTempName] = useState(projectName);
@@ -187,6 +189,30 @@ export const DawTitleBar: React.FC<DawTitleBarProps> = ({
 
       {/* Right: MIDI Status & Exit */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {onOpenCoversModal && (
+          <button
+            onClick={onOpenCoversModal}
+            style={{
+              height: '26px',
+              padding: '0 10px',
+              fontSize: '11px',
+              fontWeight: 700,
+              borderRadius: '4px',
+              backgroundColor: '#252932',
+              color: '#F5C451',
+              border: '1px solid #3F4452',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+            title="Open project covers, duplication and precreated beat templates"
+          >
+            <span className="material-icons-round" style={{ fontSize: '14px', color: '#F5C451' }}>library_music</span>
+            <span>Covers & Beats</span>
+          </button>
+        )}
+
         <div
           style={{
             display: 'flex',

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState, useRef } from 'react';
 
 interface DawTransportBarProps {
   isPlaying: boolean;
@@ -52,6 +52,8 @@ export const DawTransportBar: React.FC<DawTransportBarProps> = ({
   // Tap tempo tracking
   const lastTapRef = useRef<number>(0);
   const tapDiffsRef = useRef<number[]>([]);
+  const [isEditingBar, setIsEditingBar] = useState(false);
+  const [barInputVal, setBarInputVal] = useState('');
 
   const handleTapTempo = () => {
     const now = Date.now();
@@ -231,29 +233,65 @@ export const DawTransportBar: React.FC<DawTransportBarProps> = ({
           fontFamily: 'monospace',
         }}
       >
-        <div
-          style={{ display: 'flex', alignItems: 'baseline', gap: '2px', cursor: 'pointer' }}
-          onClick={() => {
-            const val = prompt('Enter target bar number:', String(currentBar));
-            if (val) {
-              const b = parseInt(val, 10);
+        {isEditingBar ? (
+          <input
+            autoFocus
+            type="number"
+            min="1"
+            max="512"
+            value={barInputVal}
+            onChange={(e) => setBarInputVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const b = parseInt(barInputVal, 10);
+                if (!isNaN(b) && b >= 1) onJumpToBar(b);
+                setIsEditingBar(false);
+              } else if (e.key === 'Escape') {
+                setIsEditingBar(false);
+              }
+            }}
+            onBlur={() => {
+              const b = parseInt(barInputVal, 10);
               if (!isNaN(b) && b >= 1) onJumpToBar(b);
-            }
-          }}
-          title="Click to jump to bar"
-        >
-          <span style={{ fontSize: '16px', fontWeight: 800, color: '#F3F4F6' }}>
-            {String(currentBar).padStart(3, ' ')}
-          </span>
-          <span style={{ color: '#697180' }}>.</span>
-          <span style={{ fontSize: '14px', fontWeight: 700, color: '#35C9A5' }}>
-            {currentBeat}
-          </span>
-          <span style={{ color: '#697180' }}>.</span>
-          <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
-            {currentSub}
-          </span>
-        </div>
+              setIsEditingBar(false);
+            }}
+            style={{
+              width: '48px',
+              height: '22px',
+              backgroundColor: '#111216',
+              border: '1px solid #8B78FF',
+              borderRadius: '3px',
+              color: '#F3F4F6',
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              fontWeight: 800,
+              textAlign: 'center',
+              outline: 'none',
+              padding: '0 2px',
+            }}
+          />
+        ) : (
+          <div
+            style={{ display: 'flex', alignItems: 'baseline', gap: '2px', cursor: 'pointer' }}
+            onClick={() => {
+              setBarInputVal(String(currentBar));
+              setIsEditingBar(true);
+            }}
+            title="Click to jump to bar"
+          >
+            <span style={{ fontSize: '16px', fontWeight: 800, color: '#F3F4F6' }}>
+              {String(currentBar).padStart(3, ' ')}
+            </span>
+            <span style={{ color: '#697180' }}>.</span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#35C9A5' }}>
+              {currentBeat}
+            </span>
+            <span style={{ color: '#697180' }}>.</span>
+            <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+              {currentSub}
+            </span>
+          </div>
+        )}
 
         <div style={{ width: '1px', height: '14px', backgroundColor: '#252932' }} />
 

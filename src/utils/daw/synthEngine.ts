@@ -6,6 +6,7 @@
  */
 
 import { dawContextManager } from './audioContext';
+import { dawAudioEngine } from '../dawAudioEngine';
 
 export interface SynthEnvelope {
   attack: number;   // seconds
@@ -121,6 +122,15 @@ export const SYNTH_PRESETS: Record<string, SynthPresetConfig> = {
     filter: { type: 'bandpass', cutoffHz: 2200, resonance: 4.5 },
     masterGain: 0.6,
   },
+  drums: {
+    id: 'drums',
+    name: 'Drum Machine / Percussion',
+    category: 'bass',
+    oscillatorType: 'sine',
+    envelope: { attack: 0.001, decay: 0.2, sustain: 0.1, release: 0.1 },
+    filter: { type: 'lowpass', cutoffHz: 8000, resonance: 1.0 },
+    masterGain: 0.9,
+  },
 };
 
 const NOTE_SEMITONES: Record<string, number> = {
@@ -180,6 +190,12 @@ export class SynthEngine {
     const ctx = customCtx || dawContextManager.getContext();
     const t = time ?? ctx.currentTime;
     const dest = destination || ctx.destination;
+
+    if (presetId === 'drums' || presetId === 'drum') {
+      dawAudioEngine.playDrumVoice(pitch, t, velocity, ctx, dest);
+      return;
+    }
+
     const preset = SYNTH_PRESETS[presetId] || SYNTH_PRESETS.piano;
     const freq = pitchToFrequency(pitch);
 

@@ -15,6 +15,7 @@ import {
   exportProjectAsJson,
   importProjectFromJson,
 } from '../../utils/daw/projectModel';
+import { DawConfirmModal } from './DawConfirmModal';
 
 interface DawOpenProjectModalProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ export const DawOpenProjectModal: React.FC<DawOpenProjectModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'saved' | 'templates' | 'import_export'>('saved');
   const [savedProjects, setSavedProjects] = useState<ProjectSummary[]>([]);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -54,11 +56,15 @@ export const DawOpenProjectModal: React.FC<DawOpenProjectModalProps> = ({
   };
 
   const handleDeleteSaved = (id: string, name: string) => {
-    if (confirm(`Permanently remove "${name}" from project library?`)) {
-      deleteProjectFromLibrary(id);
-      setSavedProjects(listLibraryProjects());
-      onShowSnackbar(`Removed "${name}" from library.`);
-    }
+    setDeleteConfirmTarget({ id, name });
+  };
+
+  const executeDeleteSaved = () => {
+    if (!deleteConfirmTarget) return;
+    deleteProjectFromLibrary(deleteConfirmTarget.id);
+    setSavedProjects(listLibraryProjects());
+    onShowSnackbar(`Removed "${deleteConfirmTarget.name}" from library.`);
+    setDeleteConfirmTarget(null);
   };
 
   const handleLoadTemplate = (template: 'blank' | 'trap' | 'house' | 'lofi' | 'synthwave') => {
@@ -501,6 +507,16 @@ export const DawOpenProjectModal: React.FC<DawOpenProjectModalProps> = ({
           </button>
         </div>
       </div>
+
+      <DawConfirmModal
+        isOpen={Boolean(deleteConfirmTarget)}
+        onClose={() => setDeleteConfirmTarget(null)}
+        title="Delete Saved Project"
+        message={`Permanently remove "${deleteConfirmTarget?.name}" from your local project library? This cannot be undone.`}
+        confirmLabel="Delete Project"
+        isDestructive={true}
+        onConfirm={executeDeleteSaved}
+      />
     </div>
   );
 };

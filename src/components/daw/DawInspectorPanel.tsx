@@ -296,6 +296,38 @@ export const DawInspectorPanel: React.FC<DawInspectorPanelProps> = ({
               />
             </div>
 
+            {selectedTrack.type !== 'audio' && (
+              <div>
+                <label style={{ fontSize: '10px', color: '#9CA3AF', fontWeight: 600 }}>Instrument Sound</label>
+                <select
+                  value={selectedTrack.instrumentPreset || 'piano'}
+                  onChange={(e) => onUpdateTrack(selectedTrack.id, { instrumentPreset: e.target.value })}
+                  style={{
+                    width: '100%',
+                    height: '28px',
+                    backgroundColor: '#101114',
+                    border: '1px solid #252932',
+                    borderRadius: '4px',
+                    color: '#F3F4F6',
+                    fontSize: '12px',
+                    padding: '0 6px',
+                    marginTop: '4px',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="piano">Acoustic Grand Piano</option>
+                  <option value="rhodes">Vintage Electric Rhodes</option>
+                  <option value="bass">808 Sub Bass & Reese</option>
+                  <option value="synth">Analog Poly Lead</option>
+                  <option value="pad">Atmospheric Lush Pad</option>
+                  <option value="pluck">Chamber Plucked Harp</option>
+                  <option value="brass">Punchy Synth Brass</option>
+                  <option value="bell">Crystal FM Bell</option>
+                  <option value="drums">Drum Machine / Percussion</option>
+                </select>
+              </div>
+            )}
+
             {/* Effects Rack Launcher Button */}
             <button
               onClick={() => onOpenEffectsRack(selectedTrack.id)}

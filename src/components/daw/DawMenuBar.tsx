@@ -6,6 +6,7 @@ export interface MenuActionHandlers {
   onOpenProject: () => void;
   onSaveProject: () => void;
   onSaveAsCopy: () => void;
+  onOpenCoversModal?: () => void;
   onImportAudio: () => void;
   onImportMidi: () => void;
   onExportMaster: () => void;
@@ -103,6 +104,7 @@ export const DawMenuBar: React.FC<DawMenuBarProps> = ({ handlers }) => {
         { id: 'open', label: 'Open Project / Library...', shortcut: 'Ctrl+O', action: handlers.onOpenProject },
         { id: 'save', label: 'Save Session', shortcut: 'Ctrl+S', action: handlers.onSaveProject },
         { id: 'save_copy', label: 'Save a Copy / Cover...', action: handlers.onSaveAsCopy },
+        { id: 'cover_beats', label: 'Covers & Precreated Beats...', action: handlers.onOpenCoversModal || (() => {}) },
         { id: 'sep_f1', label: '', separator: true, action: () => {} },
         { id: 'imp_aud', label: 'Import Audio File...', action: handlers.onImportAudio },
         { id: 'imp_mid', label: 'Import MIDI File...', action: handlers.onImportMidi },

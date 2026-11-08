@@ -14,7 +14,7 @@ interface DawArrangementViewProps {
   selectedClipId: string | null;
   onSelectClip: (clipId: string) => void;
   onAddClip: (trackId: string, bar: number) => void;
-  onMoveClip: (clipId: string, newStartBar: number) => void;
+  onMoveClip: (clipId: string, newStartBar: number, newTrackId?: string) => void;
   onResizeClip: (clipId: string, newDurationBars: number) => void;
   onSplitClip: (clipId: string, splitBar: number) => void;
   onDeleteClip: (clipId: string) => void;
@@ -67,8 +67,10 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
     clipId: string;
     type: 'move' | 'resize';
     startX: number;
+    startY: number;
     initialStartBar: number;
     initialDurationBars: number;
+    initialTrackIndex: number;
   } | null>(null);
 
   useEffect(() => {
@@ -83,7 +85,19 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
           1,
           Math.min(totalBars - activeDrag.initialDurationBars + 1, activeDrag.initialStartBar + deltaBars)
         );
-        onMoveClip(activeDrag.clipId, newStart);
+        const dy = e.clientY - activeDrag.startY;
+        const deltaTracks = Math.round(dy / 72);
+        const targetTrackIndex = Math.max(0, Math.min(tracks.length - 1, activeDrag.initialTrackIndex + deltaTracks));
+        const targetTrack = tracks[targetTrackIndex];
+
+        const clip = clips.find((c) => c.id === activeDrag.clipId);
+        const isCompatible = clip && targetTrack && (
+          (clip.type === 'audio' && targetTrack.type === 'audio') ||
+          (clip.type === 'midi' && targetTrack.type !== 'audio')
+        );
+
+        const newTrackId = isCompatible ? targetTrack.id : tracks[activeDrag.initialTrackIndex]?.id;
+        onMoveClip(activeDrag.clipId, newStart, newTrackId);
       } else if (activeDrag.type === 'resize') {
         const newDur = Math.max(
           1,
@@ -349,8 +363,8 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
                       </span>
                     </div>
 
-                    <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#697180' }}>
-                      {track.type}
+                    <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: track.type === 'audio' ? '#697180' : '#8B78FF', backgroundColor: 'rgba(255,255,255,0.04)', padding: '1px 4px', borderRadius: '2px' }}>
+                      {track.type === 'audio' ? 'AUDIO' : (track.instrumentPreset || track.type)}
                     </span>
                   </div>
 
@@ -497,13 +511,16 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
                             return;
                           }
 
-                          // Start dragging clip across bars
+                          // Start dragging clip across bars and tracks
+                          const trackIndex = tracks.findIndex((t) => t.id === track.id);
                           setActiveDrag({
                             clipId: clip.id,
                             type: 'move',
                             startX: e.clientX,
+                            startY: e.clientY,
                             initialStartBar: clip.startBar,
                             initialDurationBars: clip.durationBars,
+                            initialTrackIndex: trackIndex,
                           });
                         }}
                         onDoubleClick={(e) => {
@@ -613,12 +630,15 @@ export const DawArrangementView: React.FC<DawArrangementViewProps> = ({
                           onPointerDown={(e) => {
                             e.stopPropagation();
                             onSelectClip(clip.id);
+                            const trackIndex = tracks.findIndex((t) => t.id === track.id);
                             setActiveDrag({
                               clipId: clip.id,
                               type: 'resize',
                               startX: e.clientX,
+                              startY: e.clientY,
                               initialStartBar: clip.startBar,
                               initialDurationBars: clip.durationBars,
+                              initialTrackIndex: trackIndex,
                             });
                           }}
                           title="Drag right edge to change duration in bars"

@@ -59,9 +59,10 @@ export class DawAudioEngine {
 
   // --- DRUM SYNTHESIS VOICES ---
 
-  public playKick(time?: number, velocity = 0.9, customCtx?: BaseAudioContext) {
+  public playKick(time?: number, velocity = 0.9, customCtx?: BaseAudioContext, destination?: AudioNode) {
     const ctx = customCtx || this.initContext();
     const t = time ?? ctx.currentTime;
+    const dest = destination || ctx.destination;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -76,15 +77,16 @@ export class DawAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
 
     osc.start(t);
     osc.stop(t + 0.36);
   }
 
-  public playSnare(time?: number, velocity = 0.8, customCtx?: BaseAudioContext) {
+  public playSnare(time?: number, velocity = 0.8, customCtx?: BaseAudioContext, destination?: AudioNode) {
     const ctx = customCtx || this.initContext();
     const t = time ?? ctx.currentTime;
+    const dest = destination || ctx.destination;
 
     // Body tone
     const osc = ctx.createOscillator();
@@ -96,7 +98,7 @@ export class DawAudioEngine {
     oscGain.gain.setValueAtTime(velocity * 0.6, t);
     oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
     osc.connect(oscGain);
-    oscGain.connect(ctx.destination);
+    oscGain.connect(dest);
     osc.start(t);
     osc.stop(t + 0.13);
 
@@ -121,15 +123,16 @@ export class DawAudioEngine {
 
     whiteNoise.connect(filter);
     filter.connect(noiseGain);
-    noiseGain.connect(ctx.destination);
+    noiseGain.connect(dest);
 
     whiteNoise.start(t);
     whiteNoise.stop(t + 0.21);
   }
 
-  public playHiHatClosed(time?: number, velocity = 0.7, customCtx?: BaseAudioContext) {
+  public playHiHatClosed(time?: number, velocity = 0.7, customCtx?: BaseAudioContext, destination?: AudioNode) {
     const ctx = customCtx || this.initContext();
     const t = time ?? ctx.currentTime;
+    const dest = destination || ctx.destination;
 
     const bufferSize = Math.floor(ctx.sampleRate * 0.06);
     const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -151,15 +154,16 @@ export class DawAudioEngine {
 
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
 
     source.start(t);
     source.stop(t + 0.055);
   }
 
-  public playHiHatOpen(time?: number, velocity = 0.7, customCtx?: BaseAudioContext) {
+  public playHiHatOpen(time?: number, velocity = 0.7, customCtx?: BaseAudioContext, destination?: AudioNode) {
     const ctx = customCtx || this.initContext();
     const t = time ?? ctx.currentTime;
+    const dest = destination || ctx.destination;
 
     const bufferSize = Math.floor(ctx.sampleRate * 0.35);
     const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -181,15 +185,16 @@ export class DawAudioEngine {
 
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
 
     source.start(t);
     source.stop(t + 0.33);
   }
 
-  public playClap(time?: number, velocity = 0.8, customCtx?: BaseAudioContext) {
+  public playClap(time?: number, velocity = 0.8, customCtx?: BaseAudioContext, destination?: AudioNode) {
     const ctx = customCtx || this.initContext();
     const t = time ?? ctx.currentTime;
+    const dest = destination || ctx.destination;
 
     const bufferSize = Math.floor(ctx.sampleRate * 0.25);
     const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -217,15 +222,16 @@ export class DawAudioEngine {
     source.buffer = noiseBuffer;
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
 
     source.start(t);
     source.stop(t + 0.25);
   }
 
-  public play808Sub(time?: number, pitch = 'C2', durationSec = 0.5, velocity = 0.9, customCtx?: BaseAudioContext) {
+  public play808Sub(time?: number, pitch = 'C2', durationSec = 0.5, velocity = 0.9, customCtx?: BaseAudioContext, destination?: AudioNode) {
     const ctx = customCtx || this.initContext();
     const t = time ?? ctx.currentTime;
+    const dest = destination || ctx.destination;
     const freq = pitchToFrequency(pitch);
 
     const osc = ctx.createOscillator();
@@ -240,15 +246,16 @@ export class DawAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + durationSec);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
 
     osc.start(t);
     osc.stop(t + durationSec + 0.01);
   }
 
-  public playPerc(time?: number, velocity = 0.7, customCtx?: BaseAudioContext) {
+  public playPerc(time?: number, velocity = 0.7, customCtx?: BaseAudioContext, destination?: AudioNode) {
     const ctx = customCtx || this.initContext();
     const t = time ?? ctx.currentTime;
+    const dest = destination || ctx.destination;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -261,10 +268,35 @@ export class DawAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
 
     osc.start(t);
     osc.stop(t + 0.08);
+  }
+
+  public playDrumVoice(
+    voiceOrPitch: string,
+    time?: number,
+    velocity = 0.85,
+    customCtx?: BaseAudioContext,
+    destination?: AudioNode
+  ) {
+    const v = voiceOrPitch.toLowerCase();
+    if (v === 'kick' || v.startsWith('c2') || v.startsWith('b1') || v === 'c1') {
+      this.playKick(time, velocity, customCtx, destination);
+    } else if (v === 'snare' || v.startsWith('d2') || v.startsWith('e2') || v === 'd1') {
+      this.playSnare(time, velocity, customCtx, destination);
+    } else if (v === 'hihatclosed' || v.startsWith('f#') || v.startsWith('gb') || v.startsWith('g#2')) {
+      this.playHiHatClosed(time, velocity, customCtx, destination);
+    } else if (v === 'hihatopen' || v.startsWith('bb') || v.startsWith('a#')) {
+      this.playHiHatOpen(time, velocity, customCtx, destination);
+    } else if (v === 'clap' || v.startsWith('eb') || v.startsWith('d#')) {
+      this.playClap(time, velocity, customCtx, destination);
+    } else if (v === 'sub808' || v.startsWith('c0') || v.startsWith('a0')) {
+      this.play808Sub(time, 'C2', 0.6, velocity, customCtx, destination);
+    } else {
+      this.playPerc(time, velocity, customCtx, destination);
+    }
   }
 
   // --- MELODIC INSTRUMENT SYNTHESIS ---

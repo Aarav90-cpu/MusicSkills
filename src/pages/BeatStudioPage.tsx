@@ -38,6 +38,9 @@ import { DawProjectSettingsModal } from '../components/daw/DawProjectSettingsMod
 import { DawDocModal } from '../components/daw/DawDocModal';
 import { DawAboutModal } from '../components/daw/DawAboutModal';
 import { DawRenameModal } from '../components/daw/DawRenameModal';
+import { DawConfirmModal } from '../components/daw/DawConfirmModal';
+import { CoverDuplicateModal } from '../components/studio/CoverDuplicateModal';
+import { BeatPreset } from '../utils/beatPresets';
 import { PianoRoll } from '../components/studio/PianoRoll';
 
 export const BeatStudioPage: React.FC = () => {
@@ -88,6 +91,8 @@ export const BeatStudioPage: React.FC = () => {
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState<boolean>(false);
   const [isDocOpen, setIsDocOpen] = useState<boolean>(false);
   const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
+  const [isCoverModalOpen, setIsCoverModalOpen] = useState<boolean>(false);
+  const [isNewProjectConfirmOpen, setIsNewProjectConfirmOpen] = useState<boolean>(false);
   const [renameModal, setRenameModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -1529,19 +1534,242 @@ export const BeatStudioPage: React.FC = () => {
     showSnackbar(`Successfully exported ${tracksWithClips.length} multitrack stems!`);
   };
 
+  const handleApplyBeatPreset = (preset: BeatPreset) => {
+    const prevProject = JSON.parse(JSON.stringify(project));
+
+    let drumTrack = project.tracks.find(
+      (t) => t.name.toLowerCase().includes('drum') || t.id.includes('drum') || t.instrumentPreset === 'drums'
+    );
+    let bassTrack = project.tracks.find(
+      (t) => t.name.toLowerCase().includes('bass') || t.id.includes('bass') || t.instrumentPreset === 'bass'
+    );
+    let pianoTrack = project.tracks.find(
+      (t) => t.name.toLowerCase().includes('piano') || t.name.toLowerCase().includes('keys') || t.instrumentPreset === 'piano'
+    );
+
+    const nextTracks = [...project.tracks];
+
+    if (!drumTrack) {
+      drumTrack = {
+        id: `trk_drums_${Date.now()}`,
+        name: 'Drums & Percussion',
+        type: 'instrument',
+        color: '#FF5252',
+        volumeDb: 0,
+        pan: 0,
+        isMuted: false,
+        isSolo: false,
+        isArmed: false,
+        instrumentPreset: 'drums',
+        effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+      };
+      nextTracks.push(drumTrack);
+      mixer.registerChannel(drumTrack.id, drumTrack.name, drumTrack.color);
+    } else {
+      drumTrack = { ...drumTrack, instrumentPreset: 'drums' };
+      const idx = nextTracks.findIndex((t) => t.id === drumTrack!.id);
+      if (idx !== -1) nextTracks[idx] = drumTrack;
+    }
+
+    if (!bassTrack) {
+      bassTrack = {
+        id: `trk_bass_${Date.now()}`,
+        name: '808 Sub Bass',
+        type: 'instrument',
+        color: '#8B78FF',
+        volumeDb: -1,
+        pan: 0,
+        isMuted: false,
+        isSolo: false,
+        isArmed: false,
+        instrumentPreset: 'bass',
+        effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+      };
+      nextTracks.push(bassTrack);
+      mixer.registerChannel(bassTrack.id, bassTrack.name, bassTrack.color);
+    }
+
+    if (!pianoTrack) {
+      pianoTrack = {
+        id: `trk_keys_${Date.now()}`,
+        name: 'Chords & Keys',
+        type: 'midi',
+        color: '#35C9A5',
+        volumeDb: -2,
+        pan: -0.1,
+        isMuted: false,
+        isSolo: false,
+        isArmed: false,
+        instrumentPreset: 'piano',
+        effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+      };
+      nextTracks.push(pianoTrack);
+      mixer.registerChannel(pianoTrack.id, pianoTrack.name, pianoTrack.color);
+    }
+
+    const voiceToPitchMap: Record<string, string> = {
+      sub808: 'C1',
+      kick: 'C2',
+      snare: 'D2',
+      clap: 'Eb2',
+      perc: 'G#2',
+      hihatClosed: 'F#2',
+      hihatOpen: 'Bb2',
+    };
+
+    const drumNotes: DawNote[] = [];
+    Object.entries(preset.drumSteps).forEach(([voiceId, steps]) => {
+      const pitch = voiceToPitchMap[voiceId] || 'C2';
+      steps.forEach((active, stepIdx) => {
+        if (active) {
+          drumNotes.push({
+            id: `drum_${voiceId}_${stepIdx}_${Date.now()}`,
+            pitch,
+            step: stepIdx,
+            durationSteps: 1,
+            velocity: 0.85,
+          });
+        }
+      });
+    });
+
+    const newClips: DawClip[] = [];
+
+    // 4-Bar Drum Clip
+    const drumClipNotes: DawNote[] = [];
+    for (let bar = 0; bar < 4; bar++) {
+      drumNotes.forEach((n) => {
+        drumClipNotes.push({
+          id: `dn_${bar}_${n.step}_${Date.now()}_${Math.random()}`,
+          pitch: n.pitch,
+          step: bar * 16 + n.step,
+          durationSteps: n.durationSteps,
+          velocity: n.velocity,
+        });
+      });
+    }
+
+    newClips.push({
+      id: `clip_drums_${Date.now()}`,
+      trackId: drumTrack.id,
+      name: `${preset.name} (Beat)`,
+      type: 'midi',
+      startBar: 1,
+      durationBars: 4,
+      color: drumTrack.color,
+      notes: drumClipNotes,
+    });
+
+    // 4-Bar Bass Clip
+    if (preset.bassNotes.length > 0) {
+      const bassClipNotes: DawNote[] = [];
+      for (let bar = 0; bar < 4; bar++) {
+        preset.bassNotes.forEach((bn) => {
+          bassClipNotes.push({
+            id: `bn_${bar}_${bn.step}_${Date.now()}_${Math.random()}`,
+            pitch: bn.pitch,
+            step: bar * 16 + bn.step,
+            durationSteps: bn.durationSteps,
+            velocity: bn.velocity || 0.85,
+          });
+        });
+      }
+      newClips.push({
+        id: `clip_bass_${Date.now()}`,
+        trackId: bassTrack.id,
+        name: `${preset.name} (Bass)`,
+        type: 'midi',
+        startBar: 1,
+        durationBars: 4,
+        color: bassTrack.color,
+        notes: bassClipNotes,
+      });
+    }
+
+    // 4-Bar Piano / Chords Clip
+    if (preset.pianoNotes.length > 0) {
+      const pianoClipNotes: DawNote[] = [];
+      for (let bar = 0; bar < 4; bar++) {
+        preset.pianoNotes.forEach((pn) => {
+          pianoClipNotes.push({
+            id: `pn_${bar}_${pn.step}_${Date.now()}_${Math.random()}`,
+            pitch: pn.pitch,
+            step: bar * 16 + pn.step,
+            durationSteps: pn.durationSteps,
+            velocity: pn.velocity || 0.8,
+          });
+        });
+      }
+      newClips.push({
+        id: `clip_keys_${Date.now()}`,
+        trackId: pianoTrack.id,
+        name: `${preset.name} (Chords)`,
+        type: 'midi',
+        startBar: 1,
+        durationBars: 4,
+        color: pianoTrack.color,
+        notes: pianoClipNotes,
+      });
+    }
+
+    const nextProject: DawProject = {
+      ...project,
+      bpm: preset.bpm,
+      key: preset.key,
+      scale: preset.scale,
+      tracks: nextTracks,
+      clips: [...project.clips, ...newClips],
+    };
+
+    historyRef.current.pushAction({
+      description: `Load ${preset.name} Beat`,
+      undo: () => setProject(prevProject),
+      redo: () => setProject(nextProject),
+    });
+
+    setProject(nextProject);
+    setIsDirty(true);
+    showSnackbar(`Loaded "${preset.name}" beat arrangement (${preset.bpm} BPM, Key ${preset.key} ${preset.scale})!`);
+  };
+
+  const handleDuplicateProject = async (sourceChatId: string, asCover: boolean, customName?: string) => {
+    try {
+      const res = await fetch(`/api/chats/${sourceChatId}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asCover, customName }),
+      });
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const data = await res.json();
+      await refreshChats();
+
+      const dupChat = data.chat;
+      if (dupChat) {
+        setProject((prev) => ({
+          ...prev,
+          id: `proj_${dupChat.id}`,
+          name: dupChat.name,
+          bpm: dupChat.style?.bpm || prev.bpm,
+          key: dupChat.style?.key || prev.key,
+        }));
+        setIsDirty(true);
+        showSnackbar(`Loaded ${asCover ? 'cover' : 'duplicate'} project "${dupChat.name}" into Studio!`);
+      }
+    } catch (err: any) {
+      showSnackbar(`Project duplication error: ${err.message}`);
+    }
+  };
+
   // Menu action handlers
   const menuHandlers: MenuActionHandlers = {
     // File
     onNewProject: () => {
-      if (confirm('Create a new project session? Any unsaved edits will be cleared.')) {
-        setProject(createDefaultProject());
-        setIsDirty(false);
-        showSnackbar('Created new blank studio session.');
-      }
+      setIsNewProjectConfirmOpen(true);
     },
     onOpenProject: () => setIsProjectLibraryOpen(true),
     onSaveProject: handleSaveProject,
     onSaveAsCopy: handleSaveAsCopy,
+    onOpenCoversModal: () => setIsCoverModalOpen(true),
     onImportAudio: () => audioFileInputRef.current?.click(),
     onImportMidi: () => midiFileInputRef.current?.click(),
     onExportMaster: handleExportMaster,
@@ -1649,6 +1877,7 @@ export const BeatStudioPage: React.FC = () => {
         onChangeWorkspace={setActiveWorkspace}
         onExit={() => setRoute('home')}
         midiConnectedCount={midiDevices.length}
+        onOpenCoversModal={() => setIsCoverModalOpen(true)}
       />
 
       {/* 2. Global Main Menu */}
@@ -1701,6 +1930,8 @@ export const BeatStudioPage: React.FC = () => {
             onAddSampleToTrack={handleAddSampleToTrack}
             selectedTrackId={selectedTrackId || undefined}
             currentPlayheadBar={Math.floor(currentStepIndex / 16) + 1}
+            onApplyBeatPreset={handleApplyBeatPreset}
+            onOpenCoverModal={() => setIsCoverModalOpen(true)}
           />
         )}
 
@@ -1720,11 +1951,25 @@ export const BeatStudioPage: React.FC = () => {
               selectedClipId={selectedClipId}
               onSelectClip={setSelectedClipId}
               onAddClip={handleAddClip}
-              onMoveClip={(id, newBar) => {
+              onMoveClip={(id, newBar, newTrackId) => {
                 setProject((prev) => ({
                   ...prev,
-                  clips: prev.clips.map((c) => (c.id === id ? { ...c, startBar: newBar } : c)),
+                  clips: prev.clips.map((c) =>
+                    c.id === id
+                      ? {
+                          ...c,
+                          startBar: newBar,
+                          trackId: newTrackId || c.trackId,
+                          color: newTrackId
+                            ? prev.tracks.find((t) => t.id === newTrackId)?.color || c.color
+                            : c.color,
+                        }
+                      : c
+                  ),
                 }));
+                if (newTrackId && selectedClipId === id) {
+                  setSelectedTrackId(newTrackId);
+                }
                 setIsDirty(true);
               }}
               onResizeClip={(id, newDur) => {
@@ -2086,6 +2331,32 @@ export const BeatStudioPage: React.FC = () => {
         title={renameModal.title}
         initialValue={renameModal.initialValue}
         onConfirm={renameModal.onConfirm}
+      />
+
+      {/* 15. Cover / Duplicate Project & Beat Presets Modal */}
+      <CoverDuplicateModal
+        isOpen={isCoverModalOpen}
+        onClose={() => setIsCoverModalOpen(false)}
+        onApplyPreset={(preset) => {
+          handleApplyBeatPreset(preset);
+          setIsCoverModalOpen(false);
+        }}
+        onDuplicateProject={handleDuplicateProject}
+      />
+
+      {/* 16. New Project Confirmation Modal */}
+      <DawConfirmModal
+        isOpen={isNewProjectConfirmOpen}
+        onClose={() => setIsNewProjectConfirmOpen(false)}
+        title="Start New Project Session"
+        message="Create a new blank studio session? Any unsaved changes in the current session will be cleared."
+        confirmLabel="Create New Session"
+        isDestructive={true}
+        onConfirm={() => {
+          setProject(createDefaultProject());
+          setIsDirty(false);
+          showSnackbar('Created new blank studio session.');
+        }}
       />
 
       {/* Hidden File Inputs for Audio & MIDI Import */}
