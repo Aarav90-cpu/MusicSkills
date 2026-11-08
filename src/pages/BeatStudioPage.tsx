@@ -10,7 +10,9 @@ import {
   createDefaultProject,
   saveAutosaveSnapshot,
   loadAutosaveSnapshot,
+  saveProjectToLibrary,
 } from '../utils/daw/projectModel';
+import { exportProjectToMidiBlob, parseMidiFile } from '../utils/daw/midiFileEngine';
 import { dawContextManager } from '../utils/daw/audioContext';
 import { MixerEngine } from '../utils/daw/mixerEngine';
 import { dawSampleManager, SampleItem } from '../utils/daw/sampleManager';
@@ -31,6 +33,11 @@ import { DawStatusBar } from '../components/daw/DawStatusBar';
 import { DawStepSequencer } from '../components/daw/DawStepSequencer';
 import { DawShortcutsModal } from '../components/daw/DawShortcutsModal';
 import { DawAudioSetupModal } from '../components/daw/DawAudioSetupModal';
+import { DawOpenProjectModal } from '../components/daw/DawOpenProjectModal';
+import { DawProjectSettingsModal } from '../components/daw/DawProjectSettingsModal';
+import { DawDocModal } from '../components/daw/DawDocModal';
+import { DawAboutModal } from '../components/daw/DawAboutModal';
+import { DawRenameModal } from '../components/daw/DawRenameModal';
 import { PianoRoll } from '../components/studio/PianoRoll';
 
 export const BeatStudioPage: React.FC = () => {
@@ -77,6 +84,28 @@ export const BeatStudioPage: React.FC = () => {
   const [isMasterEffectsOpen, setIsMasterEffectsOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   const [isAudioSetupOpen, setIsAudioSetupOpen] = useState<boolean>(false);
+  const [isProjectLibraryOpen, setIsProjectLibraryOpen] = useState<boolean>(false);
+  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState<boolean>(false);
+  const [isDocOpen, setIsDocOpen] = useState<boolean>(false);
+  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
+  const [renameModal, setRenameModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    initialValue: string;
+    onConfirm: (val: string) => void;
+  }>({
+    isOpen: false,
+    title: '',
+    initialValue: '',
+    onConfirm: () => {},
+  });
+
+  // Clipboard Buffer
+  const clipboardClipRef = useRef<DawClip | null>(null);
+
+  // Hidden File Inputs
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
+  const midiFileInputRef = useRef<HTMLInputElement>(null);
 
   // Audio Engine & Mixer Instances
   const mixerEngineRef = useRef<MixerEngine | null>(null);
@@ -252,6 +281,37 @@ export const BeatStudioPage: React.FC = () => {
       } else if ((e.key === 'y' && e.ctrlKey) || (e.key === 'z' && e.ctrlKey && e.shiftKey)) {
         e.preventDefault();
         handleRedo();
+      } else if (e.key === 'c' && e.ctrlKey) {
+        e.preventDefault();
+        handleCopyClip();
+      } else if (e.key === 'x' && e.ctrlKey) {
+        e.preventDefault();
+        handleCutClip();
+      } else if (e.key === 'v' && e.ctrlKey) {
+        e.preventDefault();
+        handlePasteClip();
+      } else if (e.key === 'd' && e.ctrlKey) {
+        e.preventDefault();
+        if (selectedClipId) handleDuplicateClip(selectedClipId);
+      } else if (e.key === 's' && e.ctrlKey) {
+        e.preventDefault();
+        handleSaveProject();
+      } else if (e.key === 'o' && e.ctrlKey) {
+        e.preventDefault();
+        setIsProjectLibraryOpen(true);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedClipId) {
+          e.preventDefault();
+          handleDeleteClip(selectedClipId);
+        }
+      } else if (e.key === 'Escape') {
+        setSelectedClipId(null);
+      } else if (e.key === 'F1') {
+        e.preventDefault();
+        setIsDocOpen(true);
+      } else if (e.key === '?' && e.shiftKey) {
+        e.preventDefault();
+        setIsShortcutsOpen(true);
       }
     };
 
@@ -681,6 +741,420 @@ export const BeatStudioPage: React.FC = () => {
     showSnackbar(`Quantized ${quantizedNotes.length} notes in "${targetClip.name}" to grid!`);
   };
 
+  const handleReverseClip = (clipId?: string) => {
+    const targetId = clipId || selectedClipId;
+    if (!targetId) {
+      showSnackbar('No clip selected to reverse.');
+      return;
+    }
+    const clip = project.clips.find((c) => c.id === targetId);
+    if (!clip || clip.type !== 'audio' || !clip.audioBuffer) {
+      showSnackbar('Selected clip has no audio buffer to reverse.');
+      return;
+    }
+
+    const reversed = dawSampleManager.reverseBuffer(clip.audioBuffer);
+    const newPeaks = dawSampleManager.extractPeaks(reversed, 120);
+
+    setProject((prev) => ({
+      ...prev,
+      clips: prev.clips.map((c) =>
+        c.id === targetId ? { ...c, audioBuffer: reversed, peaks: newPeaks, isReversed: !c.isReversed } : c
+      ),
+    }));
+    setIsDirty(true);
+    showSnackbar(`Reversed audio waveform for "${clip.name}"!`);
+  };
+
+  const handleCutClip = (clipId?: string) => {
+    const targetId = clipId || selectedClipId;
+    if (!targetId) {
+      showSnackbar('No clip selected to cut.');
+      return;
+    }
+    const clip = project.clips.find((c) => c.id === targetId);
+    if (!clip) return;
+
+    clipboardClipRef.current = JSON.parse(JSON.stringify(clip));
+    if (clip.audioBuffer) {
+      clipboardClipRef.current!.audioBuffer = clip.audioBuffer;
+    }
+
+    handleDeleteClip(targetId);
+    showSnackbar(`Cut "${clip.name}" to clipboard.`);
+  };
+
+  const handleCopyClip = (clipId?: string) => {
+    const targetId = clipId || selectedClipId;
+    if (!targetId) {
+      showSnackbar('No clip selected to copy.');
+      return;
+    }
+    const clip = project.clips.find((c) => c.id === targetId);
+    if (!clip) return;
+
+    clipboardClipRef.current = JSON.parse(JSON.stringify(clip));
+    if (clip.audioBuffer) {
+      clipboardClipRef.current!.audioBuffer = clip.audioBuffer;
+    }
+    showSnackbar(`Copied "${clip.name}" to clipboard.`);
+  };
+
+  const handlePasteClip = () => {
+    if (!clipboardClipRef.current) {
+      showSnackbar('Clipboard is empty. Copy or cut a clip first.');
+      return;
+    }
+
+    const playheadBar = Math.floor(currentStepIndex / 16) + 1;
+    let targetTrackId = selectedTrackId || clipboardClipRef.current.trackId;
+    const targetTrack = project.tracks.find((t) => t.id === targetTrackId);
+
+    if (
+      targetTrack &&
+      ((clipboardClipRef.current.type === 'audio' && targetTrack.type !== 'audio') ||
+        (clipboardClipRef.current.type === 'midi' && targetTrack.type === 'audio'))
+    ) {
+      const compatible = project.tracks.find((t) =>
+        clipboardClipRef.current!.type === 'audio' ? t.type === 'audio' : t.type !== 'audio'
+      );
+      if (compatible) targetTrackId = compatible.id;
+    }
+
+    const pastedClip: DawClip = {
+      ...JSON.parse(JSON.stringify(clipboardClipRef.current)),
+      id: `clip_pasted_${Date.now()}`,
+      trackId: targetTrackId,
+      startBar: playheadBar,
+      audioBuffer: clipboardClipRef.current.audioBuffer,
+    };
+
+    setProject((prev) => ({
+      ...prev,
+      clips: [...prev.clips, pastedClip],
+    }));
+    setSelectedClipId(pastedClip.id);
+    setSelectedTrackId(targetTrackId);
+    setIsDirty(true);
+    showSnackbar(`Pasted "${pastedClip.name}" at Bar ${playheadBar}!`);
+  };
+
+  const handleDuplicateTrack = (trackId?: string) => {
+    const targetId = trackId || selectedTrackId;
+    if (!targetId) {
+      showSnackbar('No track selected to duplicate.');
+      return;
+    }
+    const origTrack = project.tracks.find((t) => t.id === targetId);
+    if (!origTrack) return;
+
+    const newTrackId = `trk_${Date.now()}`;
+    const newTrack: DawTrack = {
+      ...JSON.parse(JSON.stringify(origTrack)),
+      id: newTrackId,
+      name: `${origTrack.name} (Copy)`,
+    };
+
+    const origClips = project.clips.filter((c) => c.trackId === targetId);
+    const duplicatedClips: DawClip[] = origClips.map((c) => ({
+      ...JSON.parse(JSON.stringify(c)),
+      id: `clip_dup_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      trackId: newTrackId,
+      audioBuffer: c.audioBuffer,
+    }));
+
+    setProject((prev) => ({
+      ...prev,
+      tracks: [...prev.tracks, newTrack],
+      clips: [...prev.clips, ...duplicatedClips],
+    }));
+    mixer.registerChannel(newTrack.id, newTrack.name, newTrack.color, newTrack.effects);
+    mixer.syncChannel(newTrack.id, newTrack.isMuted, newTrack.isSolo, newTrack.volumeDb, newTrack.pan);
+    setSelectedTrackId(newTrack.id);
+    setIsDirty(true);
+    showSnackbar(`Duplicated track "${origTrack.name}" and ${duplicatedClips.length} clips!`);
+  };
+
+  const handleRenameTrack = (trackId?: string) => {
+    const targetId = trackId || selectedTrackId;
+    if (!targetId) {
+      showSnackbar('No track selected to rename.');
+      return;
+    }
+    const track = project.tracks.find((t) => t.id === targetId);
+    if (!track) return;
+
+    setRenameModal({
+      isOpen: true,
+      title: 'Rename Track',
+      initialValue: track.name,
+      onConfirm: (newName) => {
+        setProject((prev) => ({
+          ...prev,
+          tracks: prev.tracks.map((t) => (t.id === targetId ? { ...t, name: newName } : t)),
+        }));
+        mixer.registerChannel(track.id, newName, track.color, track.effects);
+        setIsDirty(true);
+        showSnackbar(`Renamed track to "${newName}".`);
+      },
+    });
+  };
+
+  const handleResetChannelLevels = () => {
+    setProject((prev) => ({
+      ...prev,
+      tracks: prev.tracks.map((t) => ({ ...t, volumeDb: 0, pan: 0, isMuted: false, isSolo: false })),
+      masterVolumeDb: 0,
+    }));
+    project.tracks.forEach((t) => {
+      mixer.setChannelVolume(t.id, 0);
+      mixer.setChannelPan(t.id, 0);
+      mixer.syncChannel(t.id, false, false, 0, 0);
+    });
+    mixer.setMasterVolume(0);
+    setIsDirty(true);
+    showSnackbar('Reset all channel faders to 0 dB and centered pan.');
+  };
+
+  const handleToggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  const handleResetWorkspace = () => {
+    setShowBrowser(true);
+    setShowInspector(true);
+    setShowMixer(true);
+    setActiveWorkspace('arrangement');
+    setActiveTool('pointer');
+    showSnackbar('Workspace layout reset to default.');
+  };
+
+  const handleExportMidi = () => {
+    try {
+      const blob = exportProjectToMidiBlob(project);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project.name.replace(/\s+/g, '_')}.mid`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSnackbar(`Exported Standard MIDI File "${a.download}"!`);
+    } catch (err: any) {
+      showSnackbar(`MIDI export error: ${err.message}`);
+    }
+  };
+
+  const handleImportAudioFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      showSnackbar(`Decoding audio file "${file.name}"...`);
+      const arrayBuffer = await file.arrayBuffer();
+      const ctx = dawContextManager.getContext();
+      const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+      const peaks = dawSampleManager.extractPeaks(decodedBuffer, 120);
+
+      const trackId = `trk_aud_${Date.now()}`;
+      const trackName = file.name.replace(/\.[^/.]+$/, '');
+      const newTrack: DawTrack = {
+        id: trackId,
+        name: trackName,
+        type: 'audio',
+        color: '#35C9A5',
+        volumeDb: 0,
+        pan: 0,
+        isMuted: false,
+        isSolo: false,
+        isArmed: false,
+        effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+      };
+
+      const durBars = Math.max(1, Math.ceil(decodedBuffer.duration / (project.bpm / 60) / 4));
+      const playheadBar = Math.floor(currentStepIndex / 16) + 1;
+      const newClip: DawClip = {
+        id: `clip_imported_${Date.now()}`,
+        trackId,
+        name: trackName,
+        type: 'audio',
+        startBar: playheadBar,
+        durationBars: durBars,
+        color: '#35C9A5',
+        audioBuffer: decodedBuffer,
+        peaks,
+      };
+
+      setProject((prev) => ({
+        ...prev,
+        tracks: [...prev.tracks, newTrack],
+        clips: [...prev.clips, newClip],
+      }));
+      mixer.registerChannel(trackId, trackName, '#35C9A5');
+      setSelectedTrackId(trackId);
+      setSelectedClipId(newClip.id);
+      setIsDirty(true);
+      showSnackbar(`Imported "${file.name}" into new track at Bar ${playheadBar}!`);
+    } catch (err: any) {
+      showSnackbar(`Audio import error: ${err.message}`);
+    } finally {
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleImportMidiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      showSnackbar(`Parsing MIDI file "${file.name}"...`);
+      const arrayBuffer = await file.arrayBuffer();
+      const parsedTracks = parseMidiFile(arrayBuffer);
+
+      if (parsedTracks.length === 0) {
+        showSnackbar('No readable MIDI note events found in file.');
+        return;
+      }
+
+      const newTracks: DawTrack[] = [];
+      const newClips: DawClip[] = [];
+
+      parsedTracks.forEach((pt, idx) => {
+        const trackId = `trk_midi_${Date.now()}_${idx}`;
+        const newTrack: DawTrack = {
+          id: trackId,
+          name: pt.name || `MIDI Track ${idx + 1}`,
+          type: 'midi',
+          color: '#8B78FF',
+          volumeDb: 0,
+          pan: 0,
+          isMuted: false,
+          isSolo: false,
+          isArmed: false,
+          instrumentPreset: 'piano',
+          effects: JSON.parse(JSON.stringify(mixer.masterEffectChain.getConfig())),
+        };
+        newTracks.push(newTrack);
+        mixer.registerChannel(trackId, newTrack.name, newTrack.color);
+
+        if (pt.notes.length > 0) {
+          const maxStep = Math.max(...pt.notes.map((n) => n.step + n.durationSteps));
+          const durBars = Math.max(1, Math.ceil(maxStep / 16));
+          newClips.push({
+            id: `clip_mid_${Date.now()}_${idx}`,
+            trackId,
+            name: `${pt.name} Pattern`,
+            type: 'midi',
+            startBar: 1,
+            durationBars: durBars,
+            color: '#8B78FF',
+            notes: pt.notes,
+          });
+        }
+      });
+
+      setProject((prev) => ({
+        ...prev,
+        tracks: [...prev.tracks, ...newTracks],
+        clips: [...prev.clips, ...newClips],
+      }));
+      if (newTracks.length > 0) setSelectedTrackId(newTracks[0].id);
+      if (newClips.length > 0) setSelectedClipId(newClips[0].id);
+      setIsDirty(true);
+      showSnackbar(`Imported ${newTracks.length} MIDI track(s) from "${file.name}"!`);
+    } catch (err: any) {
+      showSnackbar(`MIDI import error: ${err.message}`);
+    } finally {
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleNormalizeAudioClip = (clipId?: string) => {
+    const targetId = clipId || selectedClipId;
+    if (!targetId) {
+      showSnackbar('No clip selected to normalize.');
+      return;
+    }
+    handleNormalizeClip(targetId);
+  };
+
+  const handleSaveProject = async () => {
+    saveAutosaveSnapshot(project);
+    saveProjectToLibrary(project);
+    setIsDirty(false);
+    setLastSavedAt(new Date().toLocaleTimeString());
+    if (activeChat) {
+      try {
+        await fetch(`/api/chats/${activeChat.id}/studio-arrangement`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studioArrangement: project }),
+        });
+      } catch (_) {}
+    }
+    showSnackbar(`Saved project "${project.name}" to studio library!`);
+  };
+
+  const handleSaveAsCopy = () => {
+    setRenameModal({
+      isOpen: true,
+      title: 'Save a Copy / Cover Project',
+      initialValue: `${project.name} (Copy)`,
+      onConfirm: (newName) => {
+        const copy: DawProject = {
+          ...JSON.parse(JSON.stringify(project)),
+          id: `proj_${Date.now()}`,
+          name: newName,
+          updatedAt: new Date().toISOString(),
+        };
+        copy.clips = copy.clips.map((c, i) => ({
+          ...c,
+          audioBuffer: project.clips[i]?.audioBuffer,
+        }));
+        setProject(copy);
+        saveProjectToLibrary(copy);
+        setIsDirty(false);
+        showSnackbar(`Saved duplicate session "${newName}"!`);
+      },
+    });
+  };
+
+  const handleOpenProject = (proj: DawProject) => {
+    setProject(proj);
+    proj.tracks.forEach((t) => {
+      mixer.registerChannel(t.id, t.name, t.color, t.effects);
+      mixer.syncChannel(t.id, t.isMuted, t.isSolo, t.volumeDb, t.pan);
+    });
+    mixer.setMasterVolume(proj.masterVolumeDb);
+    setSelectedTrackId(proj.tracks[0]?.id || null);
+    setSelectedClipId(null);
+    setIsDirty(false);
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedClipId) {
+      handleDeleteClip(selectedClipId);
+    } else if (selectedTrackId) {
+      handleDeleteTrack(selectedTrackId);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (project.clips.length > 0) {
+      setSelectedClipId(project.clips[0].id);
+      showSnackbar(`Selected clip "${project.clips[0].name}".`);
+    }
+  };
+
+  const handleDeselect = () => {
+    setSelectedClipId(null);
+  };
+
   // Add sample from sidebar to existing or new track
   const handleAddSampleToTrack = (sample: SampleItem, trackId: string, bar: number) => {
     const track = project.tracks.find((t) => t.id === trackId);
@@ -1055,56 +1529,42 @@ export const BeatStudioPage: React.FC = () => {
 
   // Menu action handlers
   const menuHandlers: MenuActionHandlers = {
+    // File
     onNewProject: () => {
-      if (confirm('Create a new project session?')) {
+      if (confirm('Create a new project session? Any unsaved edits will be cleared.')) {
         setProject(createDefaultProject());
         setIsDirty(false);
+        showSnackbar('Created new blank studio session.');
       }
     },
-    onSaveProject: async () => {
-      saveAutosaveSnapshot(project);
-      setIsDirty(false);
-      setLastSavedAt(new Date().toLocaleTimeString());
-      if (activeChat) {
-        await fetch(`/api/chats/${activeChat.id}/studio-arrangement`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studioArrangement: project }),
-        });
-      }
-      showSnackbar(`Saved project "${project.name}"!`);
-    },
-    onSaveAsCopy: () => {
-      const newName = prompt('Enter name for duplicate project copy:', `${project.name} (Copy)`);
-      if (newName) {
-        setProject((prev) => ({
-          ...prev,
-          id: `proj_${Date.now()}`,
-          name: newName,
-        }));
-        setIsDirty(true);
-        showSnackbar(`Branched session as "${newName}"!`);
-      }
-    },
+    onOpenProject: () => setIsProjectLibraryOpen(true),
+    onSaveProject: handleSaveProject,
+    onSaveAsCopy: handleSaveAsCopy,
+    onImportAudio: () => audioFileInputRef.current?.click(),
+    onImportMidi: () => midiFileInputRef.current?.click(),
     onExportMaster: handleExportMaster,
+    onExportMidi: handleExportMidi,
     onExportStems: handleExportStems,
+    onOpenProjectSettings: () => setIsProjectSettingsOpen(true),
+    onShowAudioSetup: () => setIsAudioSetupOpen(true),
+    onExit: () => setRoute('home'),
+
+    // Edit
     onUndo: handleUndo,
     onRedo: handleRedo,
     canUndo: historyRef.current.canUndo(),
     canRedo: historyRef.current.canRedo(),
     undoDesc: historyRef.current.getUndoDescription(),
     redoDesc: historyRef.current.getRedoDescription(),
-    onToggleBrowser: () => setShowBrowser((prev) => !prev),
-    onToggleInspector: () => setShowInspector((prev) => !prev),
-    onToggleMixer: () => setShowMixer((prev) => !prev),
-    onSelectWorkspace: (ws) => setActiveWorkspace(ws),
-    onAddAudioTrack: () => handleAddTrack('audio', 'Audio Track', '#35C9A5'),
-    onAddMidiTrack: () => handleAddTrack('midi', 'MIDI Track', '#8B78FF', 'piano'),
-    onAddInstrumentTrack: () => handleAddTrack('instrument', '808 Bass Track', '#FF5252', 'bass'),
-    onAddDrumTrack: () => handleAddTrack('instrument', 'Drum Sequencer', '#FF5252', 'bass'),
-    onDeleteSelectedTrack: () => {
-      if (selectedTrackId) handleDeleteTrack(selectedTrackId);
+    onCutClip: () => handleCutClip(),
+    onCopyClip: () => handleCopyClip(),
+    onPasteClip: handlePasteClip,
+    onDuplicateClip: () => {
+      if (selectedClipId) handleDuplicateClip(selectedClipId);
     },
+    onDeleteSelected: handleDeleteSelected,
+    onSelectAll: handleSelectAll,
+    onDeselect: handleDeselect,
     onSplitClipAtPlayhead: () => {
       if (selectedClipId) {
         const bar = Math.floor(currentStepIndex / 16) + 1;
@@ -1112,8 +1572,45 @@ export const BeatStudioPage: React.FC = () => {
       }
     },
     onQuantizeClip: () => handleQuantizeClip(),
+
+    // View
+    onSelectWorkspace: (ws) => setActiveWorkspace(ws),
+    onToggleBrowser: () => setShowBrowser((prev) => !prev),
+    onToggleInspector: () => setShowInspector((prev) => !prev),
+    onToggleMixer: () => setShowMixer((prev) => !prev),
+    onToggleFullscreen: handleToggleFullscreen,
+    onResetWorkspace: handleResetWorkspace,
+
+    // Track
+    onAddAudioTrack: () => handleAddTrack('audio', 'Audio Track', '#35C9A5'),
+    onAddMidiTrack: () => handleAddTrack('midi', 'MIDI Track', '#8B78FF', 'piano'),
+    onAddInstrumentTrack: () => handleAddTrack('instrument', '808 Bass Track', '#FF5252', 'bass'),
+    onAddDrumTrack: () => handleAddTrack('instrument', 'Drum Sequencer', '#FF5252', 'bass'),
+    onDuplicateSelectedTrack: () => {
+      if (selectedTrackId) handleDuplicateTrack(selectedTrackId);
+    },
+    onRenameSelectedTrack: () => {
+      if (selectedTrackId) handleRenameTrack(selectedTrackId);
+    },
+    onDeleteSelectedTrack: () => {
+      if (selectedTrackId) handleDeleteTrack(selectedTrackId);
+    },
+
+    // Clip
+    onReverseAudioClip: () => handleReverseClip(),
+    onNormalizeAudioClip: () => handleNormalizeAudioClip(),
+    onToggleClipMute: () => {
+      if (selectedClipId) handleToggleClipMute(selectedClipId);
+    },
+
+    // Mixer
+    onResetChannelLevels: handleResetChannelLevels,
+    onOpenMasterEffects: () => setIsMasterEffectsOpen(true),
+
+    // Help
+    onShowDoc: () => setIsDocOpen(true),
     onShowShortcuts: () => setIsShortcutsOpen(true),
-    onShowAudioSetup: () => setIsAudioSetupOpen(true),
+    onShowAbout: () => setIsAboutOpen(true),
   };
 
   const selectedTrack = project.tracks.find((t) => t.id === selectedTrackId) || null;
@@ -1498,6 +1995,65 @@ export const BeatStudioPage: React.FC = () => {
         onClose={() => setIsAudioSetupOpen(false)}
         midiDevices={midiDevices}
         activeChannelsCount={project.tracks.length}
+      />
+
+      {/* 10. Project Library & Session Manager Modal */}
+      <DawOpenProjectModal
+        isOpen={isProjectLibraryOpen}
+        onClose={() => setIsProjectLibraryOpen(false)}
+        currentProject={project}
+        onLoadProject={handleOpenProject}
+        onShowSnackbar={showSnackbar}
+      />
+
+      {/* 11. Project Settings Modal */}
+      <DawProjectSettingsModal
+        isOpen={isProjectSettingsOpen}
+        onClose={() => setIsProjectSettingsOpen(false)}
+        project={project}
+        onUpdateSettings={(newSettings) => {
+          setProject((prev) => ({ ...prev, ...newSettings }));
+          setIsDirty(true);
+        }}
+        onShowSnackbar={showSnackbar}
+      />
+
+      {/* 12. Studio Documentation Modal */}
+      <DawDocModal
+        isOpen={isDocOpen}
+        onClose={() => setIsDocOpen(false)}
+      />
+
+      {/* 13. About DAW Modal */}
+      <DawAboutModal
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
+        sampleRate={dawContextManager.getSampleRate()}
+      />
+
+      {/* 14. Track / Project Rename Modal */}
+      <DawRenameModal
+        isOpen={renameModal.isOpen}
+        onClose={() => setRenameModal((prev) => ({ ...prev, isOpen: false }))}
+        title={renameModal.title}
+        initialValue={renameModal.initialValue}
+        onConfirm={renameModal.onConfirm}
+      />
+
+      {/* Hidden File Inputs for Audio & MIDI Import */}
+      <input
+        type="file"
+        ref={audioFileInputRef}
+        accept="audio/*"
+        style={{ display: 'none' }}
+        onChange={handleImportAudioFile}
+      />
+      <input
+        type="file"
+        ref={midiFileInputRef}
+        accept=".mid,.midi,application/json"
+        style={{ display: 'none' }}
+        onChange={handleImportMidiFile}
       />
     </div>
   );

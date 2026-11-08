@@ -217,6 +217,18 @@ export function createDefaultProject(id = 'proj_' + Math.random().toString(36).s
 }
 
 export const AUTOSAVE_STORAGE_KEY = 'musicskills_daw_autosave_snapshot';
+export const PROJECTS_LIBRARY_STORAGE_KEY = 'musicskills_projects_library';
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  bpm: number;
+  tracksCount: number;
+  clipsCount: number;
+  updatedAt: string;
+  key: string;
+  scale: string;
+}
 
 export function saveAutosaveSnapshot(project: DawProject): void {
   try {
@@ -243,4 +255,253 @@ export function loadAutosaveSnapshot(): DawProject | null {
     return null;
   }
 }
+
+export function listLibraryProjects(): ProjectSummary[] {
+  try {
+    const raw = localStorage.getItem(PROJECTS_LIBRARY_STORAGE_KEY);
+    if (!raw) return [];
+    const list: Record<string, DawProject> = JSON.parse(raw);
+    return Object.values(list).map((p) => ({
+      id: p.id,
+      name: p.name,
+      bpm: p.bpm,
+      tracksCount: p.tracks?.length || 0,
+      clipsCount: p.clips?.length || 0,
+      updatedAt: p.updatedAt || p.createdAt,
+      key: p.key,
+      scale: p.scale,
+    }));
+  } catch (_) {
+    return [];
+  }
+}
+
+export function saveProjectToLibrary(project: DawProject): void {
+  try {
+    const raw = localStorage.getItem(PROJECTS_LIBRARY_STORAGE_KEY);
+    const list: Record<string, any> = raw ? JSON.parse(raw) : {};
+    const sanitized = {
+      ...project,
+      updatedAt: new Date().toISOString(),
+      clips: project.clips.map((c) => ({
+        ...c,
+        audioBuffer: undefined,
+      })),
+    };
+    list[project.id] = sanitized;
+    localStorage.setItem(PROJECTS_LIBRARY_STORAGE_KEY, JSON.stringify(list));
+  } catch (err) {
+    console.error('[DAW Library] Save failed:', err);
+  }
+}
+
+export function loadProjectFromLibrary(projectId: string): DawProject | null {
+  try {
+    const raw = localStorage.getItem(PROJECTS_LIBRARY_STORAGE_KEY);
+    if (!raw) return null;
+    const list: Record<string, DawProject> = JSON.parse(raw);
+    return list[projectId] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export function deleteProjectFromLibrary(projectId: string): void {
+  try {
+    const raw = localStorage.getItem(PROJECTS_LIBRARY_STORAGE_KEY);
+    if (!raw) return;
+    const list: Record<string, DawProject> = JSON.parse(raw);
+    delete list[projectId];
+    localStorage.setItem(PROJECTS_LIBRARY_STORAGE_KEY, JSON.stringify(list));
+  } catch (err) {
+    console.error('[DAW Library] Delete failed:', err);
+  }
+}
+
+export function exportProjectAsJson(project: DawProject): string {
+  const sanitized = {
+    ...project,
+    clips: project.clips.map((c) => ({
+      ...c,
+      audioBuffer: undefined,
+    })),
+  };
+  return JSON.stringify(sanitized, null, 2);
+}
+
+export function importProjectFromJson(jsonString: string): DawProject {
+  const parsed = JSON.parse(jsonString);
+  if (!parsed.id || !parsed.tracks || !Array.isArray(parsed.tracks)) {
+    throw new Error('Invalid project file format: missing tracks or project metadata.');
+  }
+  return {
+    ...parsed,
+    id: `proj_${Date.now()}`,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function createTemplateProject(template: 'blank' | 'trap' | 'house' | 'lofi' | 'synthwave'): DawProject {
+  if (template === 'blank') {
+    return createDefaultProject('proj_' + Date.now(), 'Blank Session');
+  }
+
+  if (template === 'trap') {
+    const base = createDefaultProject('proj_' + Date.now(), 'Midnight Trap Session');
+    base.bpm = 140;
+    base.key = 'F';
+    base.scale = 'minor';
+    base.totalBars = 16;
+
+    // Add dark trap chords on piano
+    const pianoClip: DawClip = {
+      id: `clip_trap_piano_${Date.now()}`,
+      trackId: base.tracks[2].id, // Piano
+      name: 'Dark Minor Chords',
+      type: 'midi',
+      startBar: 1,
+      durationBars: 8,
+      color: '#35C9A5',
+      notes: [
+        { id: 'tp1', pitch: 'F3', step: 0, durationSteps: 8, velocity: 0.8 },
+        { id: 'tp2', pitch: 'Ab3', step: 0, durationSteps: 8, velocity: 0.75 },
+        { id: 'tp3', pitch: 'C4', step: 0, durationSteps: 8, velocity: 0.85 },
+        { id: 'tp4', pitch: 'Db3', step: 8, durationSteps: 8, velocity: 0.8 },
+        { id: 'tp5', pitch: 'F3', step: 8, durationSteps: 8, velocity: 0.75 },
+        { id: 'tp6', pitch: 'Ab3', step: 8, durationSteps: 8, velocity: 0.85 },
+      ],
+    };
+
+    // Add 808 sub bassline
+    const bassClip: DawClip = {
+      id: `clip_trap_bass_${Date.now()}`,
+      trackId: base.tracks[1].id, // 808 Bass
+      name: '808 Sub Slide',
+      type: 'midi',
+      startBar: 1,
+      durationBars: 8,
+      color: '#8B78FF',
+      notes: [
+        { id: 'tb1', pitch: 'F1', step: 0, durationSteps: 6, velocity: 0.95 },
+        { id: 'tb2', pitch: 'F1', step: 6, durationSteps: 2, velocity: 0.85 },
+        { id: 'tb3', pitch: 'Db1', step: 8, durationSteps: 6, velocity: 0.95 },
+        { id: 'tb4', pitch: 'Eb1', step: 14, durationSteps: 2, velocity: 0.9 },
+      ],
+    };
+
+    base.clips = [pianoClip, bassClip];
+    return base;
+  }
+
+  if (template === 'house') {
+    const base = createDefaultProject('proj_' + Date.now(), 'Club Groove 126');
+    base.bpm = 126;
+    base.key = 'A';
+    base.scale = 'minor';
+    base.totalBars = 16;
+
+    // Pluck synth progression
+    const synthClip: DawClip = {
+      id: `clip_house_synth_${Date.now()}`,
+      trackId: base.tracks[3].id, // Lead synth
+      name: 'Rolling House Pluck',
+      type: 'midi',
+      startBar: 1,
+      durationBars: 8,
+      color: '#E9A45B',
+      notes: [
+        { id: 'hs1', pitch: 'A3', step: 0, durationSteps: 2, velocity: 0.85 },
+        { id: 'hs2', pitch: 'C4', step: 2, durationSteps: 2, velocity: 0.8 },
+        { id: 'hs3', pitch: 'E4', step: 4, durationSteps: 2, velocity: 0.85 },
+        { id: 'hs4', pitch: 'G4', step: 6, durationSteps: 2, velocity: 0.8 },
+        { id: 'hs5', pitch: 'F4', step: 8, durationSteps: 2, velocity: 0.85 },
+        { id: 'hs6', pitch: 'A4', step: 10, durationSteps: 2, velocity: 0.8 },
+        { id: 'hs7', pitch: 'E4', step: 12, durationSteps: 2, velocity: 0.85 },
+        { id: 'hs8', pitch: 'C4', step: 14, durationSteps: 2, velocity: 0.8 },
+      ],
+    };
+
+    // Offbeat bassline
+    const bassClip: DawClip = {
+      id: `clip_house_bass_${Date.now()}`,
+      trackId: base.tracks[1].id,
+      name: 'Offbeat Bass',
+      type: 'midi',
+      startBar: 1,
+      durationBars: 8,
+      color: '#8B78FF',
+      notes: [
+        { id: 'hb1', pitch: 'A1', step: 2, durationSteps: 2, velocity: 0.9 },
+        { id: 'hb2', pitch: 'A1', step: 6, durationSteps: 2, velocity: 0.9 },
+        { id: 'hb3', pitch: 'A1', step: 10, durationSteps: 2, velocity: 0.9 },
+        { id: 'hb4', pitch: 'A1', step: 14, durationSteps: 2, velocity: 0.9 },
+      ],
+    };
+
+    base.clips = [synthClip, bassClip];
+    return base;
+  }
+
+  if (template === 'lofi') {
+    const base = createDefaultProject('proj_' + Date.now(), 'Late Night Lo-Fi');
+    base.bpm = 85;
+    base.key = 'C#';
+    base.scale = 'minor';
+    base.totalBars = 16;
+
+    const rhodesClip: DawClip = {
+      id: `clip_lofi_rhodes_${Date.now()}`,
+      trackId: base.tracks[2].id,
+      name: 'Dusty Rhodes Chords',
+      type: 'midi',
+      startBar: 1,
+      durationBars: 8,
+      color: '#35C9A5',
+      notes: [
+        { id: 'lr1', pitch: 'C#3', step: 0, durationSteps: 7, velocity: 0.7 },
+        { id: 'lr2', pitch: 'E3', step: 0, durationSteps: 7, velocity: 0.65 },
+        { id: 'lr3', pitch: 'G#3', step: 0, durationSteps: 7, velocity: 0.7 },
+        { id: 'lr4', pitch: 'B3', step: 0, durationSteps: 7, velocity: 0.65 },
+        { id: 'lr5', pitch: 'A2', step: 8, durationSteps: 7, velocity: 0.7 },
+        { id: 'lr6', pitch: 'C#3', step: 8, durationSteps: 7, velocity: 0.65 },
+        { id: 'lr7', pitch: 'E3', step: 8, durationSteps: 7, velocity: 0.7 },
+        { id: 'lr8', pitch: 'G#3', step: 8, durationSteps: 7, velocity: 0.65 },
+      ],
+    };
+
+    base.clips = [rhodesClip];
+    return base;
+  }
+
+  // Synthwave
+  const base = createDefaultProject('proj_' + Date.now(), 'Neon Outrun');
+  base.bpm = 112;
+  base.key = 'D';
+  base.scale = 'minor';
+  base.totalBars = 16;
+
+  const arpeggioClip: DawClip = {
+    id: `clip_synthwave_arp_${Date.now()}`,
+    trackId: base.tracks[3].id,
+    name: '16th Note Arpeggio',
+    type: 'midi',
+    startBar: 1,
+    durationBars: 8,
+    color: '#E9A45B',
+    notes: [
+      { id: 'sw1', pitch: 'D3', step: 0, durationSteps: 1, velocity: 0.8 },
+      { id: 'sw2', pitch: 'F3', step: 2, durationSteps: 1, velocity: 0.8 },
+      { id: 'sw3', pitch: 'A3', step: 4, durationSteps: 1, velocity: 0.85 },
+      { id: 'sw4', pitch: 'D4', step: 6, durationSteps: 1, velocity: 0.9 },
+      { id: 'sw5', pitch: 'C4', step: 8, durationSteps: 1, velocity: 0.85 },
+      { id: 'sw6', pitch: 'A3', step: 10, durationSteps: 1, velocity: 0.8 },
+      { id: 'sw7', pitch: 'F3', step: 12, durationSteps: 1, velocity: 0.8 },
+      { id: 'sw8', pitch: 'E3', step: 14, durationSteps: 1, velocity: 0.8 },
+    ],
+  };
+
+  base.clips = [arpeggioClip];
+  return base;
+}
+
 
