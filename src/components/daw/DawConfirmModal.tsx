@@ -8,7 +8,8 @@ import React from 'react';
 
 interface DawConfirmModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
+  onCancel?: () => void;
   title: string;
   message: string;
   confirmLabel?: string;
@@ -20,6 +21,7 @@ interface DawConfirmModalProps {
 export const DawConfirmModal: React.FC<DawConfirmModalProps> = ({
   isOpen,
   onClose,
+  onCancel,
   title,
   message,
   confirmLabel = 'Confirm',
@@ -28,6 +30,8 @@ export const DawConfirmModal: React.FC<DawConfirmModalProps> = ({
   onConfirm,
 }) => {
   if (!isOpen) return null;
+
+  const handleDismiss = onCancel || onClose || (() => {});
 
   return (
     <div
@@ -41,7 +45,7 @@ export const DawConfirmModal: React.FC<DawConfirmModalProps> = ({
         justifyContent: 'center',
         backdropFilter: 'blur(4px)',
       }}
-      onClick={onClose}
+      onClick={handleDismiss}
     >
       <div
         style={{
@@ -64,7 +68,7 @@ export const DawConfirmModal: React.FC<DawConfirmModalProps> = ({
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleDismiss}
             style={{
               padding: '7px 14px',
               backgroundColor: '#252932',
@@ -83,7 +87,7 @@ export const DawConfirmModal: React.FC<DawConfirmModalProps> = ({
             type="button"
             onClick={() => {
               onConfirm();
-              onClose();
+              handleDismiss();
             }}
             style={{
               padding: '7px 16px',

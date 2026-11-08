@@ -529,7 +529,7 @@ export const SettingsPage: React.FC = () => {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-text-dim)', marginBottom: '4px' }}>
                 <span>Timing Jitter (Micro-groove Drift)</span>
-                <span>±{timingJitterTicks} ticks</span>
+                <span>+/-{timingJitterTicks} ticks</span>
               </div>
               <input
                 type="range"
@@ -545,7 +545,7 @@ export const SettingsPage: React.FC = () => {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-text-dim)', marginBottom: '4px' }}>
                 <span>Dynamic Velocity Accent Variance</span>
-                <span>±{velocityAccentVariance} MIDI units</span>
+                <span>+/-{velocityAccentVariance} MIDI units</span>
               </div>
               <input
                 type="range"
@@ -632,7 +632,7 @@ export const SettingsPage: React.FC = () => {
             <span className="material-icons-round" style={{ fontSize: '16px' }}>
               verified
             </span>
-            <span>FluidR3_GM.sf2 SoundFont active • FluidSynth CLI renderer ready • 192kbps MP3 encoder enabled</span>
+            <span>FluidR3_GM.sf2 SoundFont active - FluidSynth CLI renderer ready - 192kbps MP3 encoder enabled</span>
           </div>
         </div>
 

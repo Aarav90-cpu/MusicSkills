@@ -104,7 +104,7 @@ export const PersistentPlayer: React.FC = () => {
             overflow: 'hidden',
           }}
         >
-          {currentTrack.artist ? `${currentTrack.artist} · ` : ''}{currentTrack.bpm} BPM · {currentTrack.version}
+          {currentTrack.artist ? `${currentTrack.artist} / ` : ''}{currentTrack.bpm} BPM / {currentTrack.version}
         </div>
       </div>
 

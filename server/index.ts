@@ -237,9 +237,10 @@ app.post('/api/chats', (req, res) => {
 });
 
 app.post('/api/chats/:id/duplicate', (req, res) => {
-  const { name, asCover, genre, bpm, coverInstruction, includeAudio } = req.body;
+  const { name, customName, asCover, genre, bpm, coverInstruction, includeAudio } = req.body;
+  const targetName = name || customName;
   const duplicated = duplicateChat(req.params.id as string, {
-    name,
+    name: targetName,
     asCover,
     genre,
     bpm: bpm ? parseInt(bpm) : undefined,

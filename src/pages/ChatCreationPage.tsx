@@ -1192,7 +1192,7 @@ export const ChatCreationPage: React.FC = () => {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--color-outline)' }}>
                     <span>Tempo & Key:</span>
-                    <span className="mono" style={{ fontWeight: 600 }}>{bpm} BPM · Key {rootKey} {scale}</span>
+                    <span className="mono" style={{ fontWeight: 600 }}>{bpm} BPM / Key {rootKey} {scale}</span>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1250,10 +1250,10 @@ export const ChatCreationPage: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-outline)', paddingBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span className="material-icons-round" style={{ color: 'var(--color-primary)' }}>terminal</span>
-                  <span style={{ fontWeight: 700, fontSize: '16px' }}>composition.py · Multi-Track MIDI Architecture</span>
+                  <span style={{ fontWeight: 700, fontSize: '16px' }}>composition.py / Multi-Track MIDI Architecture</span>
                   {customPythonCode && (
                     <span className="chip chip-active" style={{ height: '22px', fontSize: '11px' }}>
-                      +{codeLinesAdded || 180} lines · {customPythonCode.split('\n').length} lines
+                      +{codeLinesAdded || 180} lines / {customPythonCode.split('\n').length} lines
                     </span>
                   )}
                 </div>
@@ -1473,7 +1473,7 @@ export const ChatCreationPage: React.FC = () => {
                 <div>
                   <h3 style={{ fontSize: '22px', marginBottom: '4px' }}>{topic || activeChat?.name}</h3>
                   <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                    {latestVersion?.version || 'v1'} · {bpm} BPM · Key {rootKey}
+                    {latestVersion?.version || 'v1'} / {bpm} BPM / Key {rootKey}
                   </div>
                 </div>
 

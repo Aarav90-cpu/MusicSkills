@@ -111,7 +111,7 @@ export const TimelineArranger: React.FC<TimelineArrangerProps> = ({
         </div>
 
         <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-          Click bar ruler to scrub · Click track lane to place pattern/clip · Drag or resize duration
+          Click bar ruler to scrub / Click track lane to place pattern/clip / Drag or resize duration
         </div>
       </div>
 

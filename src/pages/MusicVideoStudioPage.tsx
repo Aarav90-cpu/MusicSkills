@@ -89,7 +89,7 @@ export const MusicVideoStudioPage: React.FC = () => {
 
   // Editable Composition Code
   const [compositionCode, setCompositionCode] = useState<string>(`// Remotion + Three.js 3D Reactive Music Video Composition
-// Frame rate: 30 FPS · Resolution: 1920x1080 (16:9)
+// Frame rate: 30 FPS / Resolution: 1920x1080 (16:9)
 
 export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData }) => {
   // 1. Reactive 3D Camera Path
@@ -361,7 +361,7 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
       ctx.font = '11px JetBrains Mono, monospace';
       ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
       ctx.fillText(
-        `REMOTION 3D VIEWPORT · FRAME ${currentFrame} / ${totalFrames} · ${(currentTime).toFixed(2)}s · 1080p 30FPS`,
+        `REMOTION 3D VIEWPORT / FRAME ${currentFrame} / ${totalFrames} / ${(currentTime).toFixed(2)}s / 1080p 30FPS`,
         24,
         30
       );
@@ -864,7 +864,7 @@ export const MusicVideoComposition = ({ frame, fps, durationInFrames, audioData 
             }}
           >
             <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontFamily: 'monospace' }}>
-              RemotionComposition.tsx · Three.js Shader & Particle Pipeline
+              RemotionComposition.tsx - Three.js Shader & Particle Pipeline
             </span>
 
             <button

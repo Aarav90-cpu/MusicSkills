@@ -120,7 +120,7 @@ export const WelcomePage: React.FC = () => {
               display: 'inline-block',
             }}
           />
-          <span style={{ fontSize: '12px', fontWeight: 600 }}>Open source · MIT License</span>
+          <span style={{ fontSize: '12px', fontWeight: 600 }}>Open source / MIT License</span>
         </div>
 
         {/* Headline */}
@@ -178,7 +178,7 @@ export const WelcomePage: React.FC = () => {
         </div>
 
         <div style={{ marginTop: '20px', fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
-          Takes about 2 minutes to set up · your API key stays stored on your device
+          Takes about 2 minutes to set up / your API key stays stored on your device
         </div>
       </section>
 
@@ -297,11 +297,11 @@ export const WelcomePage: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ padding: '10px', backgroundColor: 'var(--color-container)', borderRadius: '8px', fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>Timing Jitter:</span>
-                <span className="mono" style={{ color: 'var(--color-success)' }}>±{Math.round(humanizeSlider * 0.1)} ticks (~{Math.round(humanizeSlider * 0.1 * 1.04)} ms)</span>
+                <span className="mono" style={{ color: 'var(--color-success)' }}>+/-{Math.round(humanizeSlider * 0.1)} ticks (~{Math.round(humanizeSlider * 0.1 * 1.04)} ms)</span>
               </div>
               <div style={{ padding: '10px', backgroundColor: 'var(--color-container)', borderRadius: '8px', fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>Dynamic Velocity Swing:</span>
-                <span className="mono" style={{ color: 'var(--color-success)' }}>±{Math.round(humanizeSlider * 0.16)} MIDI velocity</span>
+                <span className="mono" style={{ color: 'var(--color-success)' }}>+/-{Math.round(humanizeSlider * 0.16)} MIDI velocity</span>
               </div>
             </div>
           </div>
@@ -448,7 +448,7 @@ export const WelcomePage: React.FC = () => {
             <strong>DISCLAIMER:</strong> This library does not generate vocals. It creates complete musical arrangements and timing guides for human vocalists.
           </div>
           <div>
-            MusicSkills Studio · MIT License · Built with Material 3 and Vercel AI SDK
+            MusicSkills Studio / MIT License / Built with Material 3 and Vercel AI SDK
           </div>
         </div>
       </footer>

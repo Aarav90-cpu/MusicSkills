@@ -155,6 +155,6 @@ export function importSettingsJson(jsonContent: string): AppConfig {
 
 export function maskKey(key: string): string {
   if (!key) return '';
-  if (key.length <= 8) return '••••' + key.slice(-2);
-  return '••••••••' + key.slice(-4);
+  if (key.length <= 8) return '****' + key.slice(-2);
+  return '********' + key.slice(-4);
 }

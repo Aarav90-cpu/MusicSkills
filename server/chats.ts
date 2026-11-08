@@ -240,14 +240,16 @@ export function saveChat(chat: ChatSession): void {
 
 export function duplicateChat(
   sourceId: string,
-  options?: {
-    name?: string;
-    asCover?: boolean;
-    genre?: string;
-    bpm?: number;
-    coverInstruction?: string;
-    includeAudio?: boolean;
-  }
+  options?:
+    | string
+    | {
+        name?: string;
+        asCover?: boolean;
+        genre?: string;
+        bpm?: number;
+        coverInstruction?: string;
+        includeAudio?: boolean;
+      }
 ): ChatSession | null {
   const result = getChat(sourceId);
   if (!result) return null;
@@ -255,9 +257,10 @@ export function duplicateChat(
   const { chat: sourceChat, dirPath: sourceDir } = result;
   const chatsDir = getChatsDir();
 
-  const isCover = Boolean(options?.asCover);
+  const opts = typeof options === 'string' ? { name: options } : options || {};
+  const isCover = Boolean(opts.asCover);
   const defaultName = isCover ? `Cover of ${sourceChat.name}` : `${sourceChat.name} (Copy)`;
-  const newName = (options?.name && options.name.trim()) || defaultName;
+  const newName = (opts.name && opts.name.trim()) || defaultName;
 
   const id = Math.random().toString(36).substring(2, 8);
   const safeName = sanitizeName(newName);
@@ -275,16 +278,24 @@ export function duplicateChat(
 
   if (isCover) {
     clonedChat.coverOf = sourceChat.name;
-    if (options?.coverInstruction) {
-      clonedChat.style.description = `Cover variation: ${options.coverInstruction}`;
+    if (opts.coverInstruction) {
+      clonedChat.style.description = `Cover variation: ${opts.coverInstruction}`;
     }
   }
 
-  if (options?.bpm) {
-    clonedChat.style.bpm = Number(options.bpm);
+  if (opts.bpm) {
+    clonedChat.style.bpm = Number(opts.bpm);
   }
-  if (options?.genre) {
-    clonedChat.style.genre = options.genre;
+  if (opts.genre) {
+    clonedChat.style.genre = opts.genre;
+  }
+
+  if (clonedChat.studioArrangement) {
+    clonedChat.studioArrangement.id = `proj_${id}`;
+    clonedChat.studioArrangement.name = newName;
+    if (opts.bpm) {
+      clonedChat.studioArrangement.bpm = Number(opts.bpm);
+    }
   }
 
   // Copy cover art if available
@@ -303,7 +314,7 @@ export function duplicateChat(
   }
 
   // Copy audio files if requested
-  if (options?.includeAudio !== false) {
+  if (opts.includeAudio !== false) {
     try {
       const files = fs.readdirSync(sourceDir);
       for (const f of files) {
@@ -640,7 +651,7 @@ export async function importCustomSong(params: {
   const { title, artist, album, genre = 'pop', bpm = 120, durationSec = 180, audioBuffer, audioOriginalName, lrcContent, coverBuffer } = params;
   const newChat = createChat(title, {
     topic: title,
-    description: artist ? (album ? `${artist} · ${album}` : `Custom import by ${artist}`) : 'Custom song import',
+    description: artist ? (album ? `${artist} / ${album}` : `Custom import by ${artist}`) : 'Custom song import',
     genre,
     bpm,
   });

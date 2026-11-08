@@ -41,6 +41,8 @@ export const StatsPage: React.FC = () => {
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [editingTrack, setEditingTrack] = useState<LibraryTrack | null>(null);
   const [isImportingFolder, setIsImportingFolder] = useState(false);
+  const [playlistModalTrack, setPlaylistModalTrack] = useState<LibraryTrack | null>(null);
+  const [customPlaylistName, setCustomPlaylistName] = useState<string>('');
 
   // File and Folder input refs
   const folderInputRef = useRef<HTMLInputElement | null>(null);
@@ -66,8 +68,8 @@ export const StatsPage: React.FC = () => {
         if (desc.startsWith('Custom import by ')) {
           artistName = desc.replace('Custom import by ', '').trim();
           albumName = 'Custom Imports';
-        } else if (desc.includes(' · ')) {
-          const parts = desc.split(' · ');
+        } else if ((desc.includes(' / ') || desc.includes(' / '))) {
+          const parts = (desc.includes(' / ') ? desc.split(' / ') : desc.split(' / '));
           artistName = parts[0].trim();
           albumName = parts[1].trim();
         } else if (desc && !desc.includes('song import') && !desc.includes('composition')) {
@@ -355,37 +357,27 @@ export const StatsPage: React.FC = () => {
   // Add Track to Playlist Handler
   const handleAddTrackToPlaylist = (track: LibraryTrack, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (playlists.length === 0) {
-      const name = window.prompt(`Create new playlist to add "${track.title}":`, 'My Favorites');
-      if (name && name.trim()) {
-        const pl = createPlaylist(name.trim());
-        addTrackToPlaylist(pl.id, track.id);
-        setPlaylists(loadPlaylists());
-        showSnackbar(`Created playlist "${pl.name}" and added "${track.title}"!`);
-      }
-      return;
-    }
+    setPlaylistModalTrack(track);
+    setCustomPlaylistName('');
+  };
 
-    const playlistOptions = playlists.map((p, idx) => `${idx + 1}. ${p.name}`).join('\n');
-    const choice = window.prompt(
-      `Add "${track.title}" to playlist:\n\n${playlistOptions}\n\nEnter playlist number (1-${playlists.length}) or enter a new playlist name:`,
-      '1'
-    );
-    if (!choice || !choice.trim()) return;
+  const handleAssignToPlaylist = (playlistId: string) => {
+    if (!playlistModalTrack) return;
+    addTrackToPlaylist(playlistId, playlistModalTrack.id);
+    setPlaylists(loadPlaylists());
+    const pl = playlists.find((p) => p.id === playlistId);
+    showSnackbar(`Added "${playlistModalTrack.title}" to playlist "${pl?.name || 'Playlist'}"!`);
+    setPlaylistModalTrack(null);
+  };
 
-    const trimmed = choice.trim();
-    const num = parseInt(trimmed, 10);
-    if (!isNaN(num) && num >= 1 && num <= playlists.length) {
-      const targetPl = playlists[num - 1];
-      addTrackToPlaylist(targetPl.id, track.id);
-      setPlaylists(loadPlaylists());
-      showSnackbar(`Added "${track.title}" to playlist "${targetPl.name}"!`);
-    } else {
-      const pl = createPlaylist(trimmed);
-      addTrackToPlaylist(pl.id, track.id);
-      setPlaylists(loadPlaylists());
-      showSnackbar(`Created playlist "${pl.name}" and added "${track.title}"!`);
-    }
+  const handleCreateAndAssignPlaylist = () => {
+    if (!playlistModalTrack || !customPlaylistName.trim()) return;
+    const pl = createPlaylist(customPlaylistName.trim());
+    addTrackToPlaylist(pl.id, playlistModalTrack.id);
+    setPlaylists(loadPlaylists());
+    showSnackbar(`Created playlist "${pl.name}" and added "${playlistModalTrack.title}"!`);
+    setPlaylistModalTrack(null);
+    setCustomPlaylistName('');
   };
 
   // Create Playlist Handler
@@ -869,7 +861,7 @@ export const StatsPage: React.FC = () => {
                         {album.artist}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-                        {album.tracks.length} tracks · {formatHoursMins(album.totalDurationSec)}
+                        {album.tracks.length} tracks / {formatHoursMins(album.totalDurationSec)}
                       </div>
                     </div>
                   </div>
@@ -937,7 +929,7 @@ export const StatsPage: React.FC = () => {
                 <div>
                   <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>{artist.name}</h3>
                   <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-                    {artist.tracks.length} tracks · {artist.albums.length} albums
+                    {artist.tracks.length} tracks / {artist.albums.length} albums
                   </div>
                 </div>
               </div>
@@ -1203,7 +1195,7 @@ export const StatsPage: React.FC = () => {
                       <div>
                         <div style={{ fontSize: '14px', fontWeight: 600 }}>{trk.title}</div>
                         <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                          {trk.artist} · {trk.album}
+                          {trk.artist} / {trk.album}
                         </div>
                       </div>
                     </div>
@@ -1270,7 +1262,7 @@ export const StatsPage: React.FC = () => {
                   : '0'}
               </div>
               <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                {stats.promptTokens.toLocaleString()} in · {stats.completionTokens.toLocaleString()} out
+                {stats.promptTokens.toLocaleString()} in / {stats.completionTokens.toLocaleString()} out
               </div>
             </div>
 
@@ -1283,7 +1275,7 @@ export const StatsPage: React.FC = () => {
                 {allTracks.length}
               </div>
               <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                {generatedTracks.length} generated · {importedTracks.length} imported
+                {generatedTracks.length} generated / {importedTracks.length} imported
               </div>
             </div>
           </div>
@@ -1315,6 +1307,129 @@ export const StatsPage: React.FC = () => {
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Playlist Selection Modal */}
+      {playlistModalTrack && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={() => setPlaylistModalTrack(null)}
+        >
+          <div
+            style={{
+              width: '420px',
+              maxWidth: '100%',
+              backgroundColor: '#17191E',
+              border: '1px solid #2D3139',
+              borderRadius: '8px',
+              padding: '20px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#F3F4F6' }}>
+                  Add to Playlist
+                </h3>
+                <span style={{ fontSize: '11px', color: '#9CA3AF' }}>
+                  {playlistModalTrack.title}
+                </span>
+              </div>
+              <button
+                onClick={() => setPlaylistModalTrack(null)}
+                style={{ background: 'transparent', border: 'none', color: '#9CA3AF', fontSize: '16px', cursor: 'pointer' }}
+              >
+                x
+              </button>
+            </div>
+
+            {playlists.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                <span style={{ fontSize: '11px', color: '#697180', fontWeight: 600 }}>CHOOSE EXISTING PLAYLIST:</span>
+                {playlists.map((pl) => (
+                  <button
+                    key={pl.id}
+                    onClick={() => handleAssignToPlaylist(pl.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      backgroundColor: '#101114',
+                      border: '1px solid #22252C',
+                      borderRadius: '4px',
+                      color: '#F3F4F6',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span>{pl.name}</span>
+                    <span style={{ fontSize: '10px', color: '#697180' }}>{pl.trackIds.length} tracks</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#697180', fontWeight: 600 }}>OR CREATE NEW PLAYLIST:</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="New playlist name..."
+                  value={customPlaylistName}
+                  onChange={(e) => setCustomPlaylistName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateAndAssignPlaylist();
+                  }}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    backgroundColor: '#101114',
+                    border: '1px solid #252932',
+                    borderRadius: '4px',
+                    color: '#F3F4F6',
+                    fontSize: '12px',
+                    padding: '0 10px',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={handleCreateAndAssignPlaylist}
+                  disabled={!customPlaylistName.trim()}
+                  style={{
+                    padding: '0 12px',
+                    height: '32px',
+                    backgroundColor: customPlaylistName.trim() ? '#8B78FF' : '#252932',
+                    color: customPlaylistName.trim() ? '#FFFFFF' : '#697180',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: customPlaylistName.trim() ? 'pointer' : 'default',
+                  }}
+                >
+                  Create & Add
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

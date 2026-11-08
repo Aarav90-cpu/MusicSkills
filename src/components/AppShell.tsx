@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp, AppRoute } from '../context/AppContext';
 import { ActivityPanel } from './ActivityPanel';
 import { PersistentPlayer } from './PersistentPlayer';
+import { DawConfirmModal } from './daw/DawConfirmModal';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -27,6 +28,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Handle chat creation
   const handleNewSong = async () => {
@@ -69,19 +71,25 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     }
   };
 
-  const handleDeleteChat = async (id: string, name: string) => {
-    if (window.confirm(`Delete "${name}"? This removes its folder from .chats and cannot be undone.`)) {
-      try {
-        await fetch(`/api/chats/${id}`, { method: 'DELETE' });
-        await refreshChats();
-        showSnackbar(`Deleted "${name}"`);
-        if (activeChat?.id === id) {
-          setActiveChatId(null);
-          setRoute('home');
-        }
-      } catch (e) {
-        console.error('Error deleting chat:', e);
+  const handleDeleteChat = (id: string, name: string) => {
+    setDeleteTarget({ id, name });
+  };
+
+  const executeDeleteChat = async () => {
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
+    try {
+      await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+      await refreshChats();
+      showSnackbar(`Deleted "${name}"`);
+      if (activeChat?.id === id) {
+        setActiveChatId(null);
+        setRoute('home');
       }
+    } catch (e) {
+      console.error('Error deleting chat:', e);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -558,6 +566,17 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           )}
         </div>
       )}
+      {/* Confirm Project Delete Modal */}
+      <DawConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        title="Delete Project Session"
+        message={`Are you sure you want to permanently delete "${deleteTarget?.name}"? This removes its folder from .chats and cannot be undone.`}
+        confirmLabel="Delete Project"
+        cancelLabel="Cancel"
+        onConfirm={executeDeleteChat}
+        onCancel={() => setDeleteTarget(null)}
+        isDestructive
+      />
     </div>
   );
 };

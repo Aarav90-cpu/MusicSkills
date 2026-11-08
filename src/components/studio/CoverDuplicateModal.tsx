@@ -193,7 +193,7 @@ export const CoverDuplicateModal: React.FC<CoverDuplicateModalProps> = ({
                       {activeChat.name}
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                      {activeChat.style.genre} · {activeChat.style.bpm} BPM · Key {activeChat.style.key}
+                      {activeChat.style.genre} / {activeChat.style.bpm} BPM / Key {activeChat.style.key}
                     </div>
                   </div>
 
@@ -280,7 +280,7 @@ export const CoverDuplicateModal: React.FC<CoverDuplicateModalProps> = ({
                           {c.name}
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
-                          {c.style.genre} · {c.style.bpm} BPM · Key {c.style.key}
+                          {c.style.genre} / {c.style.bpm} BPM / Key {c.style.key}
                         </div>
                       </div>
                     </div>
@@ -353,7 +353,7 @@ export const CoverDuplicateModal: React.FC<CoverDuplicateModalProps> = ({
                     </p>
 
                     <div style={{ fontSize: '11px', color: 'var(--color-primary)', fontWeight: 600 }}>
-                      Key: {preset.key} {preset.scale} · 7-Voice Drum Pattern · Bass & Piano Chords
+                      Key: {preset.key} {preset.scale} / 7-Voice Drum Pattern / Bass & Piano Chords
                     </div>
                   </div>
 

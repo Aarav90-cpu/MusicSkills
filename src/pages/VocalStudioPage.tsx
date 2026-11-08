@@ -427,7 +427,7 @@ export const VocalStudioPage: React.FC = () => {
             </h1>
           </div>
           <p style={{ fontSize: '14px', color: 'var(--color-text-medium)', margin: 0 }}>
-            Song: <strong style={{ color: 'var(--color-text-high)' }}>{activeChat.name}</strong> • Genre: {activeChat.style.genre} • {activeChat.style.bpm} BPM • Key: {activeChat.style.key}
+            Song: <strong style={{ color: 'var(--color-text-high)' }}>{activeChat.name}</strong> - Genre: {activeChat.style.genre} - {activeChat.style.bpm} BPM - Key: {activeChat.style.key}
           </p>
         </div>
 
@@ -972,7 +972,7 @@ export const VocalStudioPage: React.FC = () => {
                         {take.section}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--color-text-dim)' }}>
-                        {new Date(take.createdAt).toLocaleTimeString()} • {take.durationSec.toFixed(1)}s
+                        {new Date(take.createdAt).toLocaleTimeString()} - {take.durationSec.toFixed(1)}s
                       </div>
                     </div>
 

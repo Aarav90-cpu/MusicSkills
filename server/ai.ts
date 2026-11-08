@@ -228,7 +228,7 @@ export function parseLyricsOutput(text: string, expectedSections?: string[]): Re
 
     // Clean lyric lines: strip bullet dashes (- , * ), numbers (1. , 1) ), quotation marks
     let lineContent = trimmed
-      .replace(/^[-*•]\s+/, '')
+      .replace(/^[-*]\s+/, '')
       .replace(/^\d+[\.\)]\s+/, '')
       .replace(/^["']|["']$/g, '')
       .trim();

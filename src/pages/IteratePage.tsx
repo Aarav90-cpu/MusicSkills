@@ -268,7 +268,7 @@ export const IteratePage: React.FC = () => {
             </h1>
           </div>
           <p style={{ fontSize: '14px', color: 'var(--color-text-medium)', margin: 0 }}>
-            {activeChat.name} • {versions.length} {versions.length === 1 ? 'version' : 'versions'} compiled
+            {activeChat.name} - {versions.length} {versions.length === 1 ? 'version' : 'versions'} compiled
           </p>
         </div>
 
@@ -401,7 +401,7 @@ export const IteratePage: React.FC = () => {
               >
                 {versions.map(v => (
                   <option key={v.version} value={v.version}>
-                    {v.version} ({v.bpm} BPM · Key {v.key})
+                    {v.version} ({v.bpm} BPM / Key {v.key})
                   </option>
                 ))}
               </select>
@@ -812,7 +812,7 @@ export const IteratePage: React.FC = () => {
 
                 {versionA && (
                   <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--color-text-dim)' }}>
-                    Duration: {versionA.durationSec.toFixed(1)}s • {new Date(versionA.createdAt).toLocaleTimeString()}
+                    Duration: {versionA.durationSec.toFixed(1)}s - {new Date(versionA.createdAt).toLocaleTimeString()}
                   </div>
                 )}
               </div>
@@ -899,7 +899,7 @@ export const IteratePage: React.FC = () => {
 
                 {versionB && (
                   <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--color-text-dim)' }}>
-                    Duration: {versionB.durationSec.toFixed(1)}s • {new Date(versionB.createdAt).toLocaleTimeString()}
+                    Duration: {versionB.durationSec.toFixed(1)}s - {new Date(versionB.createdAt).toLocaleTimeString()}
                   </div>
                 )}
               </div>
@@ -952,7 +952,7 @@ export const IteratePage: React.FC = () => {
                         {ver.version}
                       </span>
                       <span style={{ fontSize: '12px', color: 'var(--color-text-high)', fontWeight: 500 }}>
-                        {ver.bpm} BPM • {ver.key} • {ver.durationSec.toFixed(0)}s
+                        {ver.bpm} BPM - {ver.key} - {ver.durationSec.toFixed(0)}s
                       </span>
                       {idx === versions.length - 1 && (
                         <span

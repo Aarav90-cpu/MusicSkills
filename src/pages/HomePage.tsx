@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { ChatSession } from '../types';
+import { DawConfirmModal } from '../components/daw/DawConfirmModal';
 
 export const HomePage: React.FC = () => {
   const { chats, refreshChats, setActiveChatId, setRoute, playTrack, showSnackbar } = useApp();
@@ -8,6 +9,7 @@ export const HomePage: React.FC = () => {
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'genre'>('recent');
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null);
 
   const handleCreateNew = async () => {
     try {
@@ -98,16 +100,21 @@ export const HomePage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, chat: ChatSession) => {
+  const handleDelete = (e: React.MouseEvent, chat: ChatSession) => {
     e.stopPropagation();
-    if (window.confirm(`Delete "${chat.name}"? This removes its folder from .chats.`)) {
-      try {
-        await fetch(`/api/chats/${chat.id}`, { method: 'DELETE' });
-        await refreshChats();
-        showSnackbar(`Deleted "${chat.name}"`);
-      } catch (err) {
-        console.error('Delete error:', err);
-      }
+    setDeleteTarget(chat);
+  };
+
+  const executeDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await fetch(`/api/chats/${deleteTarget.id}`, { method: 'DELETE' });
+      await refreshChats();
+      showSnackbar(`Deleted "${deleteTarget.name}"`);
+    } catch (err) {
+      console.error('Delete error:', err);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -590,7 +597,7 @@ export const HomePage: React.FC = () => {
                     borderTop: '1px solid var(--color-outline)',
                   }}
                 >
-                  <span>{chat.style.bpm} BPM · Key {chat.style.key}</span>
+                  <span>{chat.style.bpm} BPM / Key {chat.style.key}</span>
                   <span>{hasVersion ? `${Math.round(latestVersion?.durationSec || 0)}s` : 'Draft'}</span>
                 </div>
               </div>
@@ -598,6 +605,18 @@ export const HomePage: React.FC = () => {
           );
         })}
       </div>
+
+      {/* Delete Project Session Confirmation Dialog */}
+      <DawConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        title="Delete Project Session"
+        message={`Are you sure you want to permanently delete "${deleteTarget?.name}"? This removes its folder from .chats and cannot be undone.`}
+        confirmLabel="Delete Project"
+        cancelLabel="Cancel"
+        onConfirm={executeDelete}
+        onCancel={() => setDeleteTarget(null)}
+        isDestructive
+      />
     </div>
   );
 };

@@ -367,7 +367,7 @@ export const CodeEditorPage: React.FC = () => {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontFamily: 'monospace' }}>
-            {lineCount} lines · Python 3.14 (.venv)
+            {lineCount} lines / Python 3.14 (.venv)
           </span>
 
           <button

@@ -104,7 +104,7 @@ export const StepSequencer: React.FC<StepSequencerProps> = ({
         </div>
 
         <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-          Click step to toggle · Click voice title to preview sound
+          Click step to toggle / Click voice title to preview sound
         </div>
       </div>
 
